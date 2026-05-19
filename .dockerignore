@@ -1,0 +1,59 @@
+# Build context exclusions for `docker-compose.prod.yml` (context = repo root).
+# Keep this in sync with .gitignore — anything not committed is also not built.
+
+# VCS / CI
+.git
+.github
+.gitignore
+.gitattributes
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.idea
+.vscode
+
+# Docker / compose files themselves don't need to be in the image
+docker-compose*.yml
+.dockerignore
+
+# Local env files (never bake into an image)
+.env
+.env.*
+api/.env
+api/.env.backup
+ui/.env
+ui/.env.*
+!ui/.env.production
+
+# Backend cruft
+api/vendor
+api/node_modules
+api/storage/logs/*
+!api/storage/logs/.gitignore
+api/storage/framework/cache/data/*
+api/storage/framework/sessions/*
+api/storage/framework/views/*
+api/storage/framework/testing/*
+api/bootstrap/cache/*.php
+api/database/database.sqlite
+
+# Frontend cruft
+ui/node_modules
+ui/dist
+ui/dist-ssr
+ui/coverage
+ui/.vite
+
+# Documentation / planning
+docs
+README.md
+
+# Test artefacts
+**/.phpunit.result.cache
+**/phpunit.xml.bak
+**/*.log
+
+# macOS Docker bind-mount artefacts (defensive)
+**/.~lock.*
+**/~$*

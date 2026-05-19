@@ -1,0 +1,96 @@
+name: bankaai-prod
+
+# Production stack.
+#
+#   db   — MySQL 8 with a persistent volume.
+#   api  — Laravel + php-fpm 8.4, source baked into the image, no dev deps,
+#          opcache + APP_ENV=production. Migrations run on container start.
+#   web  — nginx serving the built Vue bundle as static JS/CSS, plus FastCGI
+#          reverse-proxy to api:9000 for /api, /sanctum and /up.
+#
+# `image:` tags are pulled from a container registry (defaults to GHCR). The
+# matching `build:` blocks let the same compose file build the images locally
+# (with `docker compose -f docker-compose.prod.yml build`) before pushing.
+#
+# Run with:
+#   cp .env.prod.example .env.prod  # then fill in APP_KEY, secrets, etc.
+#   docker compose --env-file .env.prod -f docker-compose.prod.yml pull
+#   docker compose --env-file .env.prod -f docker-compose.prod.yml up -d
+
+services:
+  db:
+    image: mysql:8.0
+    container_name: bankaai_prod_db
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${DB_DATABASE}
+      MYSQL_USER: ${DB_USERNAME}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+    volumes:
+      - db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p${DB_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    networks:
+      - bankaai_net
+
+  api:
+    image: ${REGISTRY:-ghcr.io}/${IMAGE_NAMESPACE:-your-github-username}/bankaai-api:${IMAGE_TAG:-latest}
+    build:
+      context: .
+      dockerfile: docker/api/prod.Dockerfile
+    container_name: bankaai_prod_api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      APP_NAME: ${APP_NAME:-BankaAi}
+      APP_ENV: production
+      APP_DEBUG: "false"
+      APP_KEY: ${APP_KEY}
+      APP_URL: ${APP_URL}
+      APP_LOCALE: en
+      APP_FALLBACK_LOCALE: en
+      LOG_CHANNEL: stderr
+      LOG_STACK: single
+      LOG_LEVEL: ${LOG_LEVEL:-warning}
+      DB_CONNECTION: mysql
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_DATABASE: ${DB_DATABASE}
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      SESSION_DRIVER: database
+      QUEUE_CONNECTION: database
+      CACHE_STORE: database
+      FRONTEND_URL: ${APP_URL}
+    networks:
+      - bankaai_net
+
+  web:
+    image: ${REGISTRY:-ghcr.io}/${IMAGE_NAMESPACE:-your-github-username}/bankaai-web:${IMAGE_TAG:-latest}
+    build:
+      context: .
+      dockerfile: docker/web/Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL:-/api}
+    container_name: bankaai_prod_web
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "${WEB_PORT:-80}:80"
+    networks:
+      - bankaai_net
+
+networks:
+  bankaai_net:
+    driver: bridge
+
+volumes:
+  db_data:
