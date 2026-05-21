@@ -4,7 +4,6 @@ import { useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import Card from 'primevue/card'
 import Button from 'primevue/button'
-import StatusCard from '@/components/StatusCard.vue'
 import BankCard from '@/components/BankCard.vue'
 import { useBanksStore } from '@/stores/banks'
 
@@ -39,8 +38,6 @@ onMounted(() => {
         </div>
       </template>
     </Card>
-
-    <StatusCard class="mb-4" />
 
     <section v-if="list.length">
       <h2 class="section-title">Featured banks</h2>

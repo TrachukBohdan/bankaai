@@ -2,7 +2,10 @@
 import { onMounted, onUnmounted, ref, watch } from 'vue'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
+import { configureLeafletIcons } from '@/lib/leafletIcons'
 import type { Branch } from '@/types/api'
+
+configureLeafletIcons()
 
 const props = defineProps<{
   branches: Branch[]
