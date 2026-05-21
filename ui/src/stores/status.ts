@@ -40,7 +40,7 @@ export const useStatusStore = defineStore('status', () => {
       data.value = null
       if (err instanceof AxiosError) {
         error.value = err.response
-          ? `HTTP ${err.response.status} from ${err.config?.url ?? 'API'}: ${err.message}`
+          ? `HTTP ${err.response.status}: ${err.message}`
           : `Network error: ${err.message}`
       } else if (err instanceof Error) {
         error.value = err.message

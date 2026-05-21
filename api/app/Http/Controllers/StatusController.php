@@ -22,20 +22,20 @@ class StatusController extends Controller
         $database = $this->probeDatabase();
 
         return response()->json([
-            'service'     => 'bankaai-api',
-            'status'      => $database['connected'] ? 'ok' : 'degraded',
-            'app'         => [
+            'service' => 'bankaai-api',
+            'status' => $database['connected'] ? 'ok' : 'degraded',
+            'app' => [
                 'name' => config('app.name'),
-                'env'  => App::environment(),
-                'url'  => config('app.url'),
+                'env' => App::environment(),
+                'url' => config('app.url'),
             ],
-            'versions'    => [
+            'versions' => [
                 'laravel' => App::version(),
-                'php'     => PHP_VERSION,
+                'php' => PHP_VERSION,
             ],
-            'host'        => gethostname() ?: null,
+            'host' => gethostname() ?: null,
             'server_time' => now()->toIso8601String(),
-            'database'    => $database,
+            'database' => $database,
         ]);
     }
 
@@ -51,14 +51,14 @@ class StatusController extends Controller
 
             return [
                 'connection' => $connection,
-                'connected'  => true,
-                'error'      => null,
+                'connected' => true,
+                'error' => null,
             ];
         } catch (Throwable $e) {
             return [
                 'connection' => $connection,
-                'connected'  => false,
-                'error'      => $e->getMessage(),
+                'connected' => false,
+                'error' => $e->getMessage(),
             ];
         }
     }

@@ -2,9 +2,13 @@
 
 Monorepo for the BankaAi test assignment.
 
-- `api/` — Laravel 13 REST API (PHP 8.4, php-fpm).
-- `ui/` — Vue 3 + Vite SPA (TypeScript, Pinia, Vue Router, Axios, ESLint, Prettier).
-- `docker/` — Dockerfiles and Nginx config used by `docker-compose.yml`.
+- `api/` — Laravel 13 REST API (PHP 8.4, php-fpm) with Sanctum SPA cookie auth,
+  per-15-minute polling of MinFin + NBU rates, daily refresh of banks +
+  branches, significant-change detection (≥ 5%), email alerts via subscriptions.
+- `ui/` — Vue 3 + Vite SPA (TypeScript, Pinia, Vue Router, Axios) with Leaflet
+  map for branches and Chart.js for statistics.
+- `docker/` — Dockerfiles and Nginx config used by `docker-compose.yml` and
+  `docker-compose.prod.yml`.
 - `docs/` — Task description and AI usage log (`LLM_INSTRUCTIONS.md`).
 
 The full task is in [docs/task.md](docs/task.md).
@@ -22,6 +26,13 @@ Browser  ───────►  http://localhost:8080  ──►  nginx
             /api/*, /sanctum/*, /up, *.php ─────┤──►  api  (php-fpm :9000)  ──►  db  (mysql :3306)
                                                 │
             everything else (incl. WS HMR) ─────┴──►  ui   (vite dev :5173)
+
+   ┌───────────────────────────────────────────────────────────────────────┐
+   │ scheduler  (php artisan schedule:work)  → dispatches sync jobs every  │
+   │                                            15 min / daily             │
+   │ queue      (php artisan queue:work)     → executes jobs, sends mail   │
+   │ mailpit    (smtp :1025, ui :8025)       → catches outgoing email      │
+   └───────────────────────────────────────────────────────────────────────┘
 ```
 
 ## Prerequisites
@@ -37,26 +48,43 @@ That's it. PHP, Composer, Node and npm are **not** required on the host — ever
 cp .env.example .env
 
 # 2. Build images and start everything
-docker compose up --build
+docker compose up --build -d
 
-# 3. In another terminal, run the initial DB migrations
-docker compose exec api php artisan migrate
+# 3. Run migrations and seed the 5 supported banks + 6 currencies
+docker compose exec api php artisan migrate --seed
+
+# 4. Populate live data from the upstreams (one-time backfill; the scheduler will keep it fresh)
+docker compose exec api php artisan tinker --execute='
+  dispatch_sync(new App\Jobs\SyncBanksJob);
+  dispatch_sync(new App\Jobs\SyncNbuRatesJob);
+  dispatch_sync(new App\Jobs\SyncMinFinRatesJob);
+  dispatch_sync(new App\Jobs\SyncBranchesJob);
+'
 ```
 
 Then open:
 
-- UI:        <http://localhost:8080>
-- API ping:  <http://localhost:8080/api/ping> — returns `{"status":"ok",...}`
-- Health:    <http://localhost:8080/up>
+- UI:               <http://localhost:8080>
+- API ping:         <http://localhost:8080/api/ping>
+- Mailpit (email):  <http://localhost:8025>
+- Health probe:     <http://localhost:8080/up>
+
+A demo account is pre-seeded:
+
+- **Email:** `demo@bankaai.test`
+- **Password:** `password`
 
 ## Services
 
-| Service | Image / build                                       | Host port | Internal       |
-|---------|-----------------------------------------------------|-----------|----------------|
-| `nginx` | `nginx:1.27-alpine`                                 | `8080`    | `nginx:80`     |
-| `api`   | built from `docker/api/Dockerfile` (php:8.4-fpm)    | —         | `api:9000`     |
-| `ui`    | built from `docker/ui/Dockerfile` (node:20-alpine)  | `5173`    | `ui:5173`      |
-| `db`    | `mysql:8.0`                                         | `3306`    | `db:3306`      |
+| Service     | Image / build                                       | Host port      | Internal       |
+|-------------|-----------------------------------------------------|----------------|----------------|
+| `nginx`     | `nginx:1.27-alpine`                                 | `8080`         | `nginx:80`     |
+| `api`       | built from `docker/api/Dockerfile` (php:8.4-fpm)    | —              | `api:9000`     |
+| `ui`        | built from `docker/ui/Dockerfile` (node:20-alpine)  | `5173`         | `ui:5173`      |
+| `queue`     | reuses `bankaai/api:dev`, `queue:work`              | —              | —              |
+| `scheduler` | reuses `bankaai/api:dev`, `schedule:work`           | —              | —              |
+| `db`        | `mysql:8.0`                                         | `3306`         | `db:3306`      |
+| `mailpit`   | `axllent/mailpit:latest`                            | `8025`         | `mailpit:1025` |
 
 The browser hits the API and the SPA through `nginx` on `http://localhost:8080`; the SPA reads its API base URL from `VITE_API_URL` (see `ui/.env.development`). The Vite dev server is **also** exposed directly on `localhost:5173` so the HMR WebSocket goes browser ↔ Vite without traversing nginx — this avoids `permessage-deflate` / `RSV1` issues that the WebSocket proxy can introduce and keeps a Vite WS crash from cascading through the proxy.
 
@@ -235,10 +263,37 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml \
 docker compose --env-file .env.prod -f docker-compose.prod.yml down -v
 ```
 
+## Features
+
+- **Five banks** (PrivatBank, Oschadbank, PUMB, Raiffeisen Bank, Ukreximbank) seeded with the two slugs they use in MinFin and finance.ua. The `SyncBanksJob` enriches them daily with logo, legal address, phone, email, license number.
+- **Rates ingestion**:
+  - `SyncMinFinRatesJob` every 15 min — pages through `minfin.com.ua/api/currency/rates/banks/{cc}` for USD/EUR/GBP/CHF/PLN, capturing both `cash` and `card` markets.
+  - `SyncNbuRatesJob` every 15 min — pulls the NBU official rate for the same currencies.
+- **Significant changes** — every imported rate fires a `RateImported` event. `DetectAndAnnounceChange` (queued listener) compares against the previous reading; anything moving more than 5% (configurable via `RATES_SIGNIFICANT_THRESHOLD_PCT`) is stored in `rate_changes` and a `SignificantRateChange` notification is queued via mail + database channels for every matching subscriber.
+- **Subscriptions** — authenticated users can subscribe to any (bank, currency) pair with their own threshold. Nullable `bank_id`/`currency_id` mean "any". Notifications respect the user's global `notifications_enabled` toggle.
+- **Nearest branches** — MySQL 8 spatial index (POINT, SRID 4326, generated from `lat`/`lng`) + `ST_Distance_Sphere`. ~2.5k branches across the 5 banks, refreshed daily.
+- **REST API**: `/api/currencies`, `/api/banks`, `/api/banks/{slug}`, `/api/rates`, `/api/rates/nbu` (rates + per-currency average across banks), `/api/rates/statistics`, `/api/rates/changes`, `/api/branches/nearest`. Auth via Sanctum cookies: `/api/auth/register`, `/api/auth/login`, `/api/auth/logout`, `/api/me`, `/api/me/subscriptions`.
+- **Frontend** — fully implemented views: Home (NBU + bank average highlights), Banks list, Bank detail (with map of branches), Rates (filterable), NBU + averages, Nearest branches (Leaflet map + table, with `navigator.geolocation`), Statistics (Chart.js daily line + min/max/avg), History of significant changes, Login/Register, Profile + subscription management.
+
+## Tests
+
+```bash
+# Runs the full PHPUnit suite (unit + feature) against the in-memory SQLite DB
+docker compose exec api php artisan test
+
+# Type-check the frontend
+docker compose exec ui npx vue-tsc --noEmit -p tsconfig.app.json
+
+# PHP code style (auto-fix)
+docker compose exec api ./vendor/bin/pint
+```
+
+The migration that adds the MySQL 8 spatial column is wrapped in a driver
+check, so the in-memory SQLite test DB skips it cleanly.
+
 ## Notes on the current scope
 
-- Dev stack is feature-complete for local development (HMR, bind mounts, MySQL exposed on host).
-- Prod stack ships static SPA assets + an immutable Laravel image, with auto-migrations on boot and ready-to-push image tags.
-- No Redis / queue worker / scheduler container — to be added when implementing the MinFin/NBU pollers and email notifications.
-- No Mailpit / Mailhog — to be added when implementing email notifications.
+- Dev stack is feature-complete: API + UI + scheduler + queue + mailpit are running side-by-side with HMR.
+- Prod stack ships static SPA assets + an immutable Laravel image, with auto-migrations on boot and ready-to-push image tags. The same `bankaai/api:dev` image is reused for `queue` and `scheduler` services so there's only one runtime build target.
+- Mailpit catches every outgoing email in dev; in prod swap to a real `MAIL_*` configuration (or pull e.g. `mailhog/mailhog`).
 - No TLS termination — typically handled by a reverse proxy (Caddy, Traefik, an upstream load balancer) in front of `web` in real deployments.

@@ -35,4 +35,10 @@ return [
         ],
     ],
 
+    'rates' => [
+        // Percent change that triggers a RateChange row + notification.
+        // Task §4 suggests 5% by default; can be tuned per environment.
+        'significant_threshold_pct' => env('RATES_SIGNIFICANT_THRESHOLD_PCT', 5.0),
+    ],
+
 ];

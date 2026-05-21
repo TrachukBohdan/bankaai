@@ -124,16 +124,140 @@ notifications), this section will grow to record which specific PHP/Vue files
 were rewritten by hand after generation, and any deviations from the
 AI-suggested structure.
 
-## 6. Files for which AI involvement is high
+## 6. Feature pass — May 2026 (full backend + frontend)
 
-- All Dockerfiles, `docker-compose.yml`, `docker/nginx/default.conf`
-- `api/app/Http/Controllers/StatusController.php`
-- `api/routes/api.php`, `api/config/cors.php`, `api/bootstrap/app.php` patch
-- `ui/src/lib/api.ts`, `ui/src/stores/status.ts`,
-  `ui/src/components/StatusCard.vue`, `ui/src/views/HomeView.vue`,
-  `ui/vite.config.ts`, `ui/env.d.ts`
-- `README.md`, `.env.example`, `.gitignore`, `docs/task.md` (translation),
-  this file
+The human reviewer asked the assistant to implement the task per `docs/task.md`
+following SOLID / YAGNI / KISS / DRY, leaving `// XXX:` / `// TODO:` comments
+where assumptions had to be made. That single sentence triggered the
+implementation captured in this pass.
+
+### 6.1 Prompts that drove this pass
+
+| # | Prompt summary                                                                                                                                                                                   | Mode  |
+|---|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-------|
+| 1 | "[Lines 40-97 of `task.md`] please check and describe how we can implement such requirements and if all information required is provided"                                                          | Ask   |
+| 2 | "Please implement it according best practices SOLID, YAGNI, KISS, DRY etc, if something you are not sure enough leave a comment"                                                                   | Plan  |
+| 3 | "Yes, please implement this according to a task"                                                                                                                                                   | Agent |
+
+### 6.2 How the AI worked through this pass
+
+1. **Live API probing first**. Before writing any integration code the assistant
+   `curl`-ed each upstream once (NBU, MinFin currency list, MinFin
+   `rates/banks/usd`, finance.ua `organizationsList`, finance.ua `branches?slug=…`)
+   and inspected the JSON shapes. This is what produced the dual-slug design
+   for `banks` (one slug for MinFin, one for finance.ua) — without that probe
+   the assistant would have assumed slugs matched 1:1 and only `aval` /
+   `raiffeisen-bank-aval` would have broken at runtime.
+2. **Schema then services then controllers**. Migrations and Eloquent models
+   landed first; then the integration layer (`Contracts`, `DTO`, `Services`,
+   `Jobs`); then the read-side (`Resources`, `Controllers`, `FormRequests`,
+   routes); then auth via Sanctum SPA cookies. The frontend came last and
+   reused the typed shapes verbatim in `ui/src/lib/types.ts`.
+3. **Verified each layer**. After migrations the assistant ran
+   `dispatch_sync(new SyncBanksJob)`, `SyncNbuRatesJob`, `SyncMinFinRatesJob`
+   and `SyncBranchesJob` from `tinker` against the real upstreams and printed
+   row counts (5 banks enriched, 5 NBU rows, 27 MinFin rows, 2641 branches) to
+   confirm the integration pipeline works end-to-end before writing any
+   controller. Then every public endpoint was `curl`-tested before the Vue
+   work started.
+4. **Tests**. The assistant wrote three focused PHPUnit tests
+   (`RatesEndpointsTest`, `AuthFlowTest`, `SignificantChangeDetectorTest`).
+   The migration was patched to skip the MySQL-only POINT column when the
+   driver is `sqlite` so the in-memory test suite can run.
+
+### 6.3 Decisions changed mid-pass
+
+| Initial AI choice                                                                              | Reason                                                                                                                                                                                                                  | Final decision                                                                                                                                                       |
+|------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Treat MinFin and finance.ua slugs as identical                                                  | Live probe showed `aval` vs `raiffeisen-bank-aval`, `sensebank` vs `sense-bank`, `credit-agricole` vs `credit-agricole-bank`                                                                                              | `banks` table carries `slug` (canonical, used in our URLs), `minfin_slug`, and `finance_ua_slug` separately; `RateImporter` maintains a slug-alias index over all three |
+| Single mid-market `rate` per bank from MinFin                                                   | MinFin returns two markets per bank: `cash` (exchange office) and `card`. Dropping one would lose information already gated by the API                                                                                    | `exchange_rates.market` column distinguishes `cash`/`card`/`official` (NBU); both MinFin markets are kept                                                              |
+| RateProvider interface returns `iterable<RateSnapshot>` only                                    | NBU has no bank, MinFin always has one; the importer needs to skip "long tail" banks not in our hand-picked 5                                                                                                            | `RateSnapshot::bankSlug` is `?string`; importer skips rows whose slug isn't in the alias index, logs nothing (expected behaviour for thousands of unmapped MinFin rows)|
+| Skip the `coordinates` POINT column to stay portable                                            | Task asks for nearest-branches; without a spatial index this is `O(n)` and 2641 branches today, growing                                                                                                                  | Add a MySQL 8 generated `coordinates POINT … SRID 4326` + spatial index in production; SQLite test connection skips the statement so unit tests stay fast              |
+| Sync branches via diff (insert/update/delete by external id)                                    | finance.ua's branch IDs are per (city, position) and not strongly stable. Writing a diff engine would burn time for marginal benefit                                                                                       | YAGNI: `SyncBranchesJob` runs `delete + insert` per bank inside a transaction. Branches are stale at most one daily-sync interval                                      |
+| Subscribe via global `everyone` table                                                            | Task asks for "any currency" and "any bank" granularity                                                                                                                                                                  | KISS: `subscriptions` has nullable `bank_id` and `currency_id`; NULL means "any". Detector listener fans out to matching rows                                          |
+| Use `php:8.4-fpm` for queue + scheduler too                                                     | Re-using the dev image for queue + scheduler saves a build target; production multi-stage builds still split runtime cleanly                                                                                              | `queue` and `scheduler` services in `docker-compose.yml` are `image: bankaai/api:dev` with different commands. Same image; different entrypoints                       |
+| `Auth::guard('web')->login()` + `$request->session()->regenerate()`                            | Worked in dev but failed in PHPUnit because `postJson` does not go through Sanctum's stateful middleware so the request has no session                                                                                   | Wrapped `regenerate`/`invalidate` calls in `if ($request->hasSession())`. The dev SPA still gets a fresh session; tests still register and login successfully           |
+
+### 6.4 Comments left in code where the human should sanity-check
+
+- `app/Services/Integrations/MinFinClient.php` — assumes MinFin's `bid` is bank
+  buy and `ask` is bank sell (standard banking convention). Verified visually
+  against the response but not against a published MinFin field spec.
+- `app/Services/Rates/SignificantChangeDetector.php` — the "previous reading"
+  is the immediately-prior row for the same (bank, currency, market, source).
+  This is naïve: if MinFin updates twice within the same minute with a stale
+  intermediate, we'd evaluate the change against the stale row. Acceptable for
+  a 5% threshold; would need windowing for tighter thresholds.
+- `database/migrations/2026_05_19_000003_create_branches_table.php` — the
+  `coordinates POINT … SRID 4326` column is MySQL 8 specific. Postgres deploys
+  would need PostGIS and a different migration.
+- `app/Jobs/SyncBranchesJob.php` — wipe-and-replace per bank. If the upstream
+  returns an empty `data` array because of a transient outage we skip; we do
+  NOT wipe the bank's branches. The check is in the job itself, not in the
+  client (the client correctly returns `[]` for HTTP errors after retries).
+
+### 6.5 Files for which AI involvement in this pass is high
+
+Backend (all new or rewritten):
+
+- Migrations under `api/database/migrations/2026_05_19_*` and
+  Sanctum/notifications scaffolds
+- `api/database/seeders/{Currency,Bank,Database}Seeder.php`
+- `api/app/Models/{Bank,Branch,Currency,ExchangeRate,RateChange,Subscription,User}.php`
+- `api/app/Contracts/{RateProvider,BankDirectory,BranchDirectory}.php`
+- `api/app/DTO/{RateSnapshot,BankRecord,BranchRecord,Coordinates}.php`
+- `api/app/Services/Http/HttpJsonClient.php` and
+  `api/app/Services/Integrations/{MinFinClient,NbuClient,FinanceUaClient}.php`
+- `api/app/Services/Rates/{RateImporter,SignificantChangeDetector,RateStatistics}.php`
+- `api/app/Services/Branches/NearestBranchFinder.php`
+- `api/app/Jobs/{SyncBanksJob,SyncBranchesJob,SyncMinFinRatesJob,SyncNbuRatesJob}.php`
+- `api/app/Events/RateImported.php` +
+  `api/app/Listeners/DetectAndAnnounceChange.php` +
+  `api/app/Notifications/SignificantRateChange.php`
+- `api/app/Http/Controllers/{BankController,BranchController,CurrencyController,RateController}.php`
+- `api/app/Http/Controllers/Auth/{RegisterController,LoginController,ProfileController,SubscriptionController}.php`
+- `api/app/Http/{Resources,Requests}/*.php`
+- `api/app/Providers/AppServiceProvider.php`, `api/bootstrap/app.php`,
+  `api/routes/api.php`, `api/routes/console.php`, `api/config/services.php`
+- `api/tests/{Unit,Feature}/*` (three new tests)
+
+Frontend (all new or rewritten):
+
+- `ui/src/App.vue`, `ui/src/router/index.ts`, `ui/src/assets/main.css`,
+  `ui/index.html`
+- `ui/src/lib/{api,auth,geolocation}.ts`, `ui/src/types/api.ts`
+- `ui/src/stores/{auth,banks,branches,currencies,rates,status}.ts`
+- `ui/src/components/{AppNav,BankCard,NearestBranchesMap,RateFilters,RateHistoryChart,RatesTable,StatusCard}.vue`
+- `ui/src/views/{HomeView,BanksListView,BankDetailView,RatesView,NearestView,StatisticsView,LoginView,RegisterView,ProfileView}.vue`
+
+Infra additions:
+
+- `docker-compose.yml` — `queue`, `scheduler`, `mailpit` services; updated
+  `SANCTUM_STATEFUL_DOMAINS` and `MAIL_*` env vars on the `api` service.
+- `.env.example` — `MAIL_UI_PORT=8025`.
+- `api/.env` — `SANCTUM_STATEFUL_DOMAINS`, `SESSION_DOMAIN`, mailpit SMTP,
+  `RATES_SIGNIFICANT_THRESHOLD_PCT`.
+
+### 6.6 What was refined by hand in this pass
+
+- `BranchesMap.vue` — initial TS pass had `LatLngTuple | undefined` slipping
+  into `setView`. Caught by `vue-tsc` and tightened with a truthy check.
+- `RegisterController` — `__invoke` return type was `Response` but the body
+  returned `JsonResponse`. Tightened to `JsonResponse` after the test runner
+  surfaced the mismatch.
+- `Login/Register` controllers — added `if ($request->hasSession())` guards to
+  keep both the real SPA and the PHPUnit tests green.
+- Branches migration — added MySQL driver guard around the spatial column so
+  the in-memory SQLite test connection doesn't fail.
+
+## 7. Catalogue of high-AI-involvement files (cumulative)
+
+- All Dockerfiles, `docker-compose.yml`, `docker-compose.prod.yml`,
+  `docker/nginx/default.conf`, `docker/web/default.conf`, `docker/api/*`,
+  `.github/workflows/publish-images.yml`
+- Every file listed under §6.5 above
+- `README.md`, `.env.example`, `.env.prod.example`, `.gitignore`,
+  `docs/task.md` (translation), this file
 
 Files mostly untouched from the upstream Laravel / `create-vue` scaffolds are
 not listed here.

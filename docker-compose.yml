@@ -43,12 +43,77 @@ services:
       APP_DEBUG: "true"
       APP_URL: http://localhost:${WEB_PORT:-8080}
       FRONTEND_URL: http://localhost:${WEB_PORT:-8080}
+      SANCTUM_STATEFUL_DOMAINS: "localhost:${WEB_PORT:-8080},localhost:${UI_HMR_PORT:-5173},127.0.0.1:${WEB_PORT:-8080},127.0.0.1:${UI_HMR_PORT:-5173}"
       DB_CONNECTION: mysql
       DB_HOST: db
       DB_PORT: 3306
       DB_DATABASE: ${DB_DATABASE:-bankaai}
       DB_USERNAME: ${DB_USERNAME:-bankaai}
       DB_PASSWORD: ${DB_PASSWORD:-secret}
+      MAIL_MAILER: smtp
+      MAIL_HOST: mailpit
+      MAIL_PORT: 1025
+      QUEUE_CONNECTION: database
+    networks:
+      - bankaai_net
+
+  queue:
+    image: bankaai/api:dev
+    container_name: bankaai_queue
+    restart: unless-stopped
+    depends_on:
+      - api
+    command: ["sh", "-c", "exec php artisan queue:work --tries=3 --queue=default --sleep=1"]
+    volumes:
+      - ./api:/var/www/html
+      - api_vendor:/var/www/html/vendor
+    environment:
+      APP_ENV: local
+      APP_DEBUG: "true"
+      DB_CONNECTION: mysql
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_DATABASE: ${DB_DATABASE:-bankaai}
+      DB_USERNAME: ${DB_USERNAME:-bankaai}
+      DB_PASSWORD: ${DB_PASSWORD:-secret}
+      MAIL_MAILER: smtp
+      MAIL_HOST: mailpit
+      MAIL_PORT: 1025
+      QUEUE_CONNECTION: database
+    networks:
+      - bankaai_net
+
+  scheduler:
+    image: bankaai/api:dev
+    container_name: bankaai_scheduler
+    restart: unless-stopped
+    depends_on:
+      - api
+    command: ["sh", "-c", "exec php artisan schedule:work"]
+    volumes:
+      - ./api:/var/www/html
+      - api_vendor:/var/www/html/vendor
+    environment:
+      APP_ENV: local
+      APP_DEBUG: "true"
+      DB_CONNECTION: mysql
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_DATABASE: ${DB_DATABASE:-bankaai}
+      DB_USERNAME: ${DB_USERNAME:-bankaai}
+      DB_PASSWORD: ${DB_PASSWORD:-secret}
+      QUEUE_CONNECTION: database
+    networks:
+      - bankaai_net
+
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: bankaai_mailpit
+    restart: unless-stopped
+    ports:
+      - "${MAIL_UI_PORT:-8025}:8025"
+    expose:
+      - "1025"
     networks:
       - bankaai_net
 
