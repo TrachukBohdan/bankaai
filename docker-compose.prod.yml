@@ -60,8 +60,8 @@ services:
       LOG_STACK: single
       LOG_LEVEL: ${LOG_LEVEL:-warning}
       DB_CONNECTION: mysql
-      DB_HOST: db
-      DB_PORT: 3306
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT}
       DB_DATABASE: ${DB_DATABASE}
       DB_USERNAME: ${DB_USERNAME}
       DB_PASSWORD: ${DB_PASSWORD}
