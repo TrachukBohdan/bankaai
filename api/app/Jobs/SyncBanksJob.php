@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Jobs;
 
 use App\Contracts\BankDirectory;
+use App\DTO\BankRecord;
 use App\Models\Bank;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -15,12 +16,10 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Enriches our 5 hand-picked banks with directory metadata from finance.ua:
- * logo URL, legal address, phone, email, license info.
+ * Enriches seeded banks with directory metadata from finance.ua organizationsList.
  *
- * We never INSERT new banks here — the seeded list is the source of truth for
- * which banks we expose. This keeps the surface area small (YAGNI) and avoids
- * polluting our UI with hundreds of banks that have no rates configured.
+ * The seeder only stores slugs and a display name; this job fills logo, contacts,
+ * legal info, and (when available) rating from the upstream API.
  */
 final class SyncBanksJob implements ShouldQueue
 {
@@ -43,28 +42,47 @@ final class SyncBanksJob implements ShouldQueue
         $records = $directory->fetchBanks($slugs);
 
         $updated = 0;
+        $missing = [];
+
         foreach ($banks as $bank) {
             $record = $records[$bank->finance_ua_slug] ?? null;
             if ($record === null) {
+                $missing[] = $bank->finance_ua_slug;
                 continue;
             }
-            $bank->fill([
-                'legal_name' => $record->legalName ?? $bank->legal_name,
-                'logo_url' => $record->logoUrl ?? $bank->logo_url,
-                'website' => $record->website ?? $bank->website,
-                'phone' => $record->phone ?? $bank->phone,
-                'email' => $record->email ?? $bank->email,
-                'legal_address' => $record->legalAddress ?? $bank->legal_address,
-                'license_number' => $record->licenseNumber ?? $bank->license_number,
-                'license_date' => $record->licenseDate
-                    ? Carbon::instance($record->licenseDate)
-                    : $bank->license_date,
-                'last_synced_at' => Carbon::now(),
-            ]);
+
+            $bank->fill($this->mapRecordToBank($bank, $record));
+            $bank->last_synced_at = Carbon::now();
             $bank->save();
             $updated++;
         }
 
+        if ($missing !== []) {
+            Log::warning('SyncBanksJob: finance.ua returned no data for slugs', [
+                'slugs' => $missing,
+            ]);
+        }
+
         Log::info('SyncBanksJob done', ['updated' => $updated]);
+    }
+
+    /** @return array<string, mixed> */
+    private function mapRecordToBank(Bank $bank, BankRecord $record): array
+    {
+        return [
+            'name'           => $record->name,
+            'legal_name'     => $record->legalName ?? $bank->legal_name,
+            'logo_url'       => $record->logoUrl ?? $bank->logo_url,
+            'website'        => $record->website ?? $bank->website,
+            'phone'          => $record->phone ?? $bank->phone,
+            'email'          => $record->email ?? $bank->email,
+            'legal_address'  => $record->legalAddress ?? $bank->legal_address,
+            'license_number' => $record->licenseNumber ?? $bank->license_number,
+            'license_date'   => $record->licenseDate
+                ? Carbon::instance($record->licenseDate)
+                : $bank->license_date,
+            // Prefer upstream rating when finance.ua publishes one; keep seed value otherwise.
+            'rating'         => $record->rating ?? $bank->rating,
+        ];
     }
 }

@@ -16,26 +16,26 @@ use Throwable;
 /**
  * Adapter for finance.ua's directory + branches APIs.
  *
- * `/banks/api/organizationsList?locale=uk` returns:
+ * `GET /banks/api/organizationsList?locale=uk` returns:
  *   {
  *     "responseData": [
- *       { "id": ..., "slug": "privatbank", "title": "...", "longTitle": "...",
- *         "licenseNumber": "...", "licenseDate": "DD.MM.YYYY",
- *         "logo": [".../64.png", ".../128.png"],
- *         "legalAddress": "...", "site": "...", "phone": "...", "email": "..." },
- *       ...
+ *       {
+ *         "slug": "privatbank",
+ *         "title": "ПриватБанк",
+ *         "longTitle": "Акціонерне товариство …",
+ *         "ratingBank": 4.9,
+ *         "licenseNumber": "…",
+ *         "licenseDate": "05.10.2011",
+ *         "logo": ["…/64.png", "…/128.png"],
+ *         "squareLogo": ["…"],
+ *         "legalAddress": "…",
+ *         "site": "https://…",
+ *         "phone": "3700",
+ *         "email": "…"
+ *       },
+ *       …
  *     ],
- *     "responseOtherData": { "<slug>": { ... }, ... }
- *   }
- *
- * `/api/organization/v1/branches?slug={slug}&locale=uk` returns:
- *   {
- *     "data": [
- *       { "id": "...", "name": "City Name", "slug": "city-slug", "primary": false,
- *         "data": [{ "lat": "50.x", "lng": "27.x", "address": "...",
- *                    "branch_name": "...", "phone": "...", "primary": false }, ...] },
- *       ...
- *     ]
+ *     "responseOtherData": { … }
  *   }
  */
 final class FinanceUaClient extends HttpJsonClient implements BankDirectory, BranchDirectory
@@ -72,23 +72,18 @@ final class FinanceUaClient extends HttpJsonClient implements BankDirectory, Bra
                 continue;
             }
 
-            // logo arrives as an array [64px-url, 128px-url]; pick the larger one.
-            $logo = null;
-            if (! empty($item['logo']) && is_array($item['logo'])) {
-                $logo = (string) end($item['logo']);
-            }
-
             $out[$slug] = new BankRecord(
                 financeUaSlug: $slug,
                 name: (string) ($item['title'] ?? $slug),
-                legalName: isset($item['longTitle']) ? (string) $item['longTitle'] : null,
-                logoUrl: $logo,
-                website: isset($item['site']) ? (string) $item['site'] : null,
-                phone: isset($item['phone']) ? (string) $item['phone'] : null,
-                email: ! empty($item['email']) ? (string) $item['email'] : null,
-                legalAddress: isset($item['legalAddress']) ? (string) $item['legalAddress'] : null,
-                licenseNumber: isset($item['licenseNumber']) ? (string) $item['licenseNumber'] : null,
+                legalName: $this->stringOrNull($item['longTitle'] ?? null),
+                logoUrl: $this->resolveLogoUrl($item),
+                website: $this->stringOrNull($item['site'] ?? null),
+                phone: $this->stringOrNull($item['phone'] ?? null),
+                email: $this->stringOrNull($item['email'] ?? null),
+                legalAddress: $this->stringOrNull($item['legalAddress'] ?? null),
+                licenseNumber: $this->stringOrNull($item['licenseNumber'] ?? null),
                 licenseDate: $this->parseDate($item['licenseDate'] ?? null),
+                rating: $this->parseRating($item['ratingBank'] ?? null),
             );
         }
 
@@ -104,7 +99,7 @@ final class FinanceUaClient extends HttpJsonClient implements BankDirectory, Bra
         if (! $response->successful()) {
             Log::warning('finance.ua branches failed', [
                 'status' => $response->status(),
-                'slug' => $financeUaSlug,
+                'slug'   => $financeUaSlug,
             ]);
 
             return [];
@@ -144,7 +139,7 @@ final class FinanceUaClient extends HttpJsonClient implements BankDirectory, Bra
                     name: (string) ($item['branch_name'] ?? $cityName ?? 'Branch'),
                     city: $cityName,
                     address: (string) ($item['address'] ?? ''),
-                    phone: isset($item['phone']) ? (string) $item['phone'] : null,
+                    phone: $this->stringOrNull($item['phone'] ?? null),
                     lat: $lat,
                     lng: $lng,
                     isPrimary: (bool) ($item['primary'] ?? false),
@@ -153,6 +148,43 @@ final class FinanceUaClient extends HttpJsonClient implements BankDirectory, Bra
         }
 
         return $out;
+    }
+
+    /** @param array<string, mixed> $item */
+    private function resolveLogoUrl(array $item): ?string
+    {
+        foreach (['logo', 'squareLogo'] as $key) {
+            if (! empty($item[$key]) && is_array($item[$key])) {
+                $url = (string) end($item[$key]);
+
+                return $this->stringOrNull($url);
+            }
+        }
+
+        return null;
+    }
+
+    private function stringOrNull(mixed $value): ?string
+    {
+        if (! is_string($value)) {
+            return null;
+        }
+        $trimmed = trim($value);
+
+        return $trimmed === '' ? null : $trimmed;
+    }
+
+    private function parseRating(mixed $raw): ?float
+    {
+        if ($raw === null || $raw === '') {
+            return null;
+        }
+        if (! is_numeric($raw)) {
+            return null;
+        }
+        $rating = (float) $raw;
+
+        return $rating > 0 ? round($rating, 1) : null;
     }
 
     private function parseDate(mixed $raw): ?DateTimeImmutable

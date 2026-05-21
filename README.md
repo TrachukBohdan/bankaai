@@ -50,12 +50,12 @@ cp .env.example .env
 # 2. Build images and start everything
 docker compose up --build -d
 
-# 3. Run migrations and seed the 5 supported banks + 6 currencies
+# 3. Run migrations and seed (includes finance.ua bank metadata sync)
 docker compose exec api php artisan migrate --seed
 
 # 4. Populate live data from the upstreams (one-time backfill; the scheduler will keep it fresh)
+docker compose exec api php artisan banks:sync
 docker compose exec api php artisan tinker --execute='
-  dispatch_sync(new App\Jobs\SyncBanksJob);
   dispatch_sync(new App\Jobs\SyncNbuRatesJob);
   dispatch_sync(new App\Jobs\SyncMinFinRatesJob);
   dispatch_sync(new App\Jobs\SyncBranchesJob);

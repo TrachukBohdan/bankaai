@@ -19,5 +19,7 @@ final readonly class BankRecord
         public ?string $legalAddress,
         public ?string $licenseNumber,
         public ?DateTimeImmutable $licenseDate,
+        /** From finance.ua `ratingBank` when present. */
+        public ?float $rating = null,
     ) {}
 }

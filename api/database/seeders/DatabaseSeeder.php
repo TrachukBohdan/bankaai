@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Database\Seeders;
 
+use App\Jobs\SyncBanksJob;
 use App\Models\User;
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
@@ -18,6 +19,10 @@ class DatabaseSeeder extends Seeder
             CurrencySeeder::class,
             BankSeeder::class,
         ]);
+
+        // Pull logo, phone, legal address, etc. from finance.ua so /api/banks is
+        // immediately useful after migrate --seed (not only after the scheduler).
+        SyncBanksJob::dispatchSync();
 
         // Demo account so the UI is immediately usable. Idempotent thanks to
         // updateOrCreate semantics inside firstOrCreate.

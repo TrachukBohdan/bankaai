@@ -20,7 +20,7 @@ final class BankResource extends JsonResource
             'legal_name'     => $this->legal_name,
             'description'    => $this->description,
             'logo_url'       => $this->logo_url,
-            'website'        => $this->website,
+            'website'        => $this->website ?: null,
             'phone'          => $this->phone,
             'email'          => $this->email,
             'legal_address'  => $this->legal_address,
