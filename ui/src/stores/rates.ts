@@ -1,6 +1,7 @@
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
 import api from '@/lib/api'
+import { cleanQueryParams } from '@/lib/queryParams'
 import type { ExchangeRate, NbuResponse, StatisticsResponse } from '@/types/api'
 
 export interface RateFilters {
@@ -24,7 +25,9 @@ export const useRatesStore = defineStore('rates', () => {
     loading.value = true
     error.value = null
     try {
-      const { data } = await api.get<{ data: ExchangeRate[] }>('/rates', { params: filters })
+      const { data } = await api.get<{ data: ExchangeRate[] }>('/rates', {
+        params: cleanQueryParams(filters),
+      })
       rates.value = data.data
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to load rates'
@@ -37,7 +40,9 @@ export const useRatesStore = defineStore('rates', () => {
     loading.value = true
     error.value = null
     try {
-      const { data } = await api.get<NbuResponse>('/rates/nbu', { params: filters })
+      const { data } = await api.get<NbuResponse>('/rates/nbu', {
+        params: cleanQueryParams(filters),
+      })
       nbu.value = data
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to load NBU rates'
@@ -50,7 +55,9 @@ export const useRatesStore = defineStore('rates', () => {
     loading.value = true
     error.value = null
     try {
-      const { data } = await api.get<StatisticsResponse>('/rates/statistics', { params: filters })
+      const { data } = await api.get<StatisticsResponse>('/rates/statistics', {
+        params: cleanQueryParams(filters),
+      })
       statistics.value = data
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to load statistics'

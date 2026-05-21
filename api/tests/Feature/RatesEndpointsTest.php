@@ -25,10 +25,25 @@ class RatesEndpointsTest extends TestCase
         $usd = Currency::where('code', 'USD')->firstOrFail();
         $bank = Bank::where('slug', 'privatbank')->firstOrFail();
 
+        $oschad = Bank::where('slug', 'oschadbank')->firstOrFail();
+        $eur = Currency::where('code', 'EUR')->firstOrFail();
+
         ExchangeRate::create([
             'bank_id' => $bank->id, 'currency_id' => $usd->id,
             'market' => 'cash', 'source' => 'minfin',
             'buy' => 43.8, 'sell' => 44.4,
+            'rate_at' => Carbon::now()->subHour(), 'fetched_at' => Carbon::now(),
+        ]);
+        ExchangeRate::create([
+            'bank_id' => $oschad->id, 'currency_id' => $usd->id,
+            'market' => 'cash', 'source' => 'minfin',
+            'buy' => 43.5, 'sell' => 44.1,
+            'rate_at' => Carbon::now()->subHour(), 'fetched_at' => Carbon::now(),
+        ]);
+        ExchangeRate::create([
+            'bank_id' => $bank->id, 'currency_id' => $eur->id,
+            'market' => 'cash', 'source' => 'minfin',
+            'buy' => 46.2, 'sell' => 47.0,
             'rate_at' => Carbon::now()->subHour(), 'fetched_at' => Carbon::now(),
         ]);
         ExchangeRate::create([
@@ -55,9 +70,20 @@ class RatesEndpointsTest extends TestCase
 
     public function test_rates_endpoint_filters_by_currency_slug(): void
     {
-        $this->getJson('/api/rates?currencies[]=USD')
+        $this->getJson('/api/rates?currency=USD')
             ->assertOk()
             ->assertJsonFragment(['code' => 'USD']);
+    }
+
+    public function test_statistics_endpoint_filters_by_bank_and_currency(): void
+    {
+        $all = $this->getJson('/api/rates/statistics')->json('summary.samples');
+        $bankOnly = $this->getJson('/api/rates/statistics?bank=privatbank')->json('summary.samples');
+        $both = $this->getJson('/api/rates/statistics?bank=privatbank&currency=USD')->json('summary.samples');
+
+        $this->assertGreaterThan(0, $all);
+        $this->assertLessThan($all, $bankOnly);
+        $this->assertLessThan($bankOnly, $both);
     }
 
     public function test_rates_nbu_endpoint_returns_nbu_and_averages(): void

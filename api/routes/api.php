@@ -9,6 +9,7 @@ use App\Http\Controllers\Auth\SubscriptionController;
 use App\Http\Controllers\BankController;
 use App\Http\Controllers\BranchController;
 use App\Http\Controllers\CurrencyController;
+use App\Http\Controllers\RateChangeController;
 use App\Http\Controllers\RateController;
 use App\Http\Controllers\StatusController;
 use Illuminate\Support\Facades\Route;
@@ -31,6 +32,7 @@ Route::get('/branches/nearest', [BranchController::class, 'nearest']);
 Route::get('/rates', [RateController::class, 'index']);
 Route::get('/rates/nbu', [RateController::class, 'nbu']);
 Route::get('/rates/history', [RateController::class, 'history']);
+Route::get('/rates/changes', [RateChangeController::class, 'index']);
 Route::get('/rates/statistics', [RateController::class, 'statistics']);
 
 // SPA cookie auth (Sanctum stateful)

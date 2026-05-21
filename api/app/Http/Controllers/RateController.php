@@ -103,14 +103,15 @@ final class RateController extends Controller
         if (! empty($filters['currency_codes'])) {
             $statsFilters['currency_ids'] = Currency::whereIn('code', $filters['currency_codes'])->pluck('id')->all();
         }
-        if (! empty($filters['market'])) {
-            $statsFilters['market'] = $filters['market'];
-        }
         if (! empty($filters['source'])) {
             $statsFilters['source'] = $filters['source'];
+            $statsFilters['market'] = $filters['market']
+                ?? ($filters['source'] === ExchangeRate::SOURCE_NBU
+                    ? ExchangeRate::MARKET_OFFICIAL
+                    : ExchangeRate::MARKET_CASH);
         } else {
             $statsFilters['source'] = ExchangeRate::SOURCE_MINFIN;
-            $statsFilters['market']  = ExchangeRate::MARKET_CASH;
+            $statsFilters['market']  = $filters['market'] ?? ExchangeRate::MARKET_CASH;
         }
 
         return response()->json([

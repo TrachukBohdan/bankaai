@@ -7,6 +7,7 @@ import ProgressSpinner from 'primevue/progressspinner'
 import DatePicker from 'primevue/datepicker'
 import RateFilters from '@/components/RateFilters.vue'
 import RateHistoryChart from '@/components/RateHistoryChart.vue'
+import { formatLocalDate } from '@/lib/queryParams'
 import { useRatesStore } from '@/stores/rates'
 import type { StatsFilters } from '@/stores/rates'
 
@@ -16,20 +17,41 @@ const filters = ref<StatsFilters>({})
 const fromDate = ref<Date | null>(null)
 const toDate = ref<Date | null>(null)
 
-function apply(f: StatsFilters = {}): void {
-  const merged: StatsFilters = { ...filters.value, ...f }
+function buildParams(extra: StatsFilters = {}): StatsFilters {
+  const merged: StatsFilters = {}
+
+  const bank = 'bank' in extra ? extra.bank : filters.value.bank
+  const currency = 'currency' in extra ? extra.currency : filters.value.currency
+  if (bank) {
+    merged.bank = bank
+  }
+  if (currency) {
+    merged.currency = currency
+  }
   if (fromDate.value) {
-    merged.from = fromDate.value.toISOString().slice(0, 10)
+    merged.from = formatLocalDate(fromDate.value)
   }
   if (toDate.value) {
-    merged.to = toDate.value.toISOString().slice(0, 10)
+    merged.to = formatLocalDate(toDate.value)
   }
+  return merged
+}
+
+function apply(f: StatsFilters = {}): void {
+  const merged = buildParams(f)
   filters.value = merged
   void store.fetchStatistics(merged)
 }
 
+function onPeriodChange(): void {
+  apply()
+}
+
 onMounted(() => {
-  void store.fetchStatistics()
+  const today = new Date()
+  toDate.value = today
+  fromDate.value = new Date(today.getFullYear(), today.getMonth() - 3, today.getDate())
+  apply()
 })
 </script>
 
@@ -50,7 +72,7 @@ onMounted(() => {
               date-format="yy-mm-dd"
               show-icon
               class="w-full"
-              @update:model-value="apply()"
+              @update:model-value="onPeriodChange"
             />
           </div>
           <div class="field">
@@ -61,7 +83,7 @@ onMounted(() => {
               date-format="yy-mm-dd"
               show-icon
               class="w-full"
-              @update:model-value="apply()"
+              @update:model-value="onPeriodChange"
             />
           </div>
         </div>
@@ -73,7 +95,7 @@ onMounted(() => {
     </div>
     <Message v-if="error" severity="error" :closable="false" class="mb-3">{{ error }}</Message>
 
-    <template v-if="statistics">
+    <template v-if="statistics && !loading">
       <Message severity="info" :closable="false" class="mb-3">
         Period: {{ statistics.period.from }} → {{ statistics.period.to }}
         ({{ statistics.summary.samples }} samples)
@@ -99,7 +121,7 @@ onMounted(() => {
       <Card>
         <template #title>Chart</template>
         <template #content>
-          <RateHistoryChart :statistics="statistics" />
+          <RateHistoryChart :key="`${statistics.period.from}-${statistics.period.to}-${statistics.summary.samples}`" :statistics="statistics" />
         </template>
       </Card>
     </template>

@@ -18,6 +18,7 @@ class DatabaseSeeder extends Seeder
         $this->call([
             CurrencySeeder::class,
             BankSeeder::class,
+            ExchangeRateSeeder::class,
         ]);
 
         // Pull logo, phone, legal address, etc. from finance.ua so /api/banks is
