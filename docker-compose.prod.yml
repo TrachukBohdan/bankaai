@@ -39,7 +39,7 @@ services:
       - bankaai_net
 
   api: &laravel
-    image: ${REGISTRY:-ghcr.io}/${IMAGE_NAMESPACE:-your-github-username}/bankaai-api:${IMAGE_TAG:-latest}
+    image: ${REGISTRY:-ghcr.io}/${IMAGE_NAMESPACE:-TrachukBohdan}/bankaai-api:${IMAGE_TAG:-latest}
     build:
       context: .
       dockerfile: docker/api/prod.Dockerfile
@@ -95,7 +95,7 @@ services:
       <<: *laravel_env
 
   web:
-    image: ${REGISTRY:-ghcr.io}/${IMAGE_NAMESPACE:-your-github-username}/bankaai-web:${IMAGE_TAG:-latest}
+    image: ${REGISTRY:-ghcr.io}/${IMAGE_NAMESPACE:-TrachukBohdan}/bankaai-web:${IMAGE_TAG:-latest}
     build:
       context: .
       dockerfile: docker/web/Dockerfile

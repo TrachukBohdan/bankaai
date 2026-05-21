@@ -164,14 +164,14 @@ What changes vs dev:
 | Background jobs | `queue` + `scheduler` containers (15 min rates, daily banks/branches) | Same: `queue` + `scheduler` services using the API image            |
 | Exposed ports   | `8080`, `5173`, `3306`                           | Only `WEB_PORT` (defaults to `80`); `db` is internal               |
 | `APP_ENV`       | `local`                                          | `production`                                                       |
-| Image tags      | Local `bankaai/api:dev`, `bankaai/ui:dev`        | `ghcr.io/<owner>/bankaai-api:<tag>`, `ghcr.io/<owner>/bankaai-web:<tag>` |
+| Image tags      | Local `bankaai/api:dev`, `bankaai/ui:dev`        | `ghcr.io/TrachukBohdan/bankaai-api:<tag>`, `ghcr.io/TrachukBohdan/bankaai-web:<tag>` |
 
 ### 1. Configure
 
 ```bash
 cp .env.prod.example .env.prod
 # Edit .env.prod and set at least:
-#   IMAGE_NAMESPACE=<your-github-username-or-org>
+#   IMAGE_NAMESPACE=TrachukBohdan
 #   APP_KEY=base64:...        # see step 2
 #   APP_URL=https://your-domain
 #   DB_PASSWORD, DB_ROOT_PASSWORD (strong passwords)
@@ -205,7 +205,7 @@ This produces two images tagged according to `REGISTRY` / `IMAGE_NAMESPACE` / `I
 # One-time auth — use a Personal Access Token (classic) with the `write:packages`
 # scope, or a fine-grained token with "Read and write" on Packages for the target
 # user/org. See https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry
-echo "<GHCR_TOKEN>" | docker login ghcr.io -u <your-github-username> --password-stdin
+echo "<GHCR_TOKEN>" | docker login ghcr.io -u TrachukBohdan --password-stdin
 
 docker compose --env-file .env.prod -f docker-compose.prod.yml push
 ```
@@ -240,8 +240,8 @@ Common tags it produces:
 Verify after a run by listing your packages on the GitHub UI (`/<owner>?tab=packages`) or:
 
 ```bash
-docker pull ghcr.io/<owner>/bankaai-api:latest
-docker pull ghcr.io/<owner>/bankaai-web:latest
+docker pull ghcr.io/TrachukBohdan/bankaai-api:latest
+docker pull ghcr.io/TrachukBohdan/bankaai-web:latest
 ```
 
 ### Useful prod commands

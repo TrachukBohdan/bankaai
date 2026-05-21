@@ -8,7 +8,7 @@ name: Publish container images
 #   - `latest`, on every push to the default branch
 #
 # Pull on a target host with:
-#   IMAGE_NAMESPACE=<your-github-username-or-org> \
+#   IMAGE_NAMESPACE=TrachukBohdan \
 #   docker compose --env-file .env.prod -f docker-compose.prod.yml pull
 #
 # Note: GHCR requires lowercase image names. We feed it `github.repository_owner`
