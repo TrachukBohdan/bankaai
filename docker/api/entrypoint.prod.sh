@@ -55,7 +55,7 @@ echo "[entrypoint] running migrations..."
 php artisan migrate --force --no-interaction
 
 echo "[entrypoint] syncing bank directory from finance.ua..."
-php artisan banks:sync --no-interaction
+php artisan banks:sync --sync --no-interaction
 
 # --- 3. Cache for production ---------------------------------------------
 echo "[entrypoint] caching config, routes, views, events..."

@@ -91,7 +91,8 @@ RUN composer dump-autoload \
  && chmod -R 0775 storage bootstrap/cache
 
 COPY docker/api/entrypoint.prod.sh /usr/local/bin/entrypoint.sh
-RUN chmod +x /usr/local/bin/entrypoint.sh
+COPY docker/api/scheduler-entrypoint.sh /usr/local/bin/scheduler-entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh /usr/local/bin/scheduler-entrypoint.sh
 
 # php-fpm listens on 9000 (default); only the web service needs to reach it.
 EXPOSE 9000

@@ -53,13 +53,10 @@ docker compose up --build -d
 # 3. Run migrations and seed (includes finance.ua bank metadata sync)
 docker compose exec api php artisan migrate --seed
 
-# 4. Populate live data from the upstreams (one-time backfill; the scheduler will keep it fresh)
-docker compose exec api php artisan banks:sync
-docker compose exec api php artisan tinker --execute='
-  dispatch_sync(new App\Jobs\SyncNbuRatesJob);
-  dispatch_sync(new App\Jobs\SyncMinFinRatesJob);
-  dispatch_sync(new App\Jobs\SyncBranchesJob);
-'
+# 4. (Optional) One-time backfill — the scheduler + queue containers keep data fresh automatically
+docker compose exec api php artisan banks:sync --sync
+docker compose exec api php artisan rates:sync --sync
+docker compose exec api php artisan branches:sync --sync
 ```
 
 Then open:
@@ -163,6 +160,7 @@ What changes vs dev:
 | Web container   | `nginx:1.27-alpine` reverse-proxying `vite dev`  | `nginx:1.27-alpine` serving `/usr/share/nginx/html` directly with long-cache headers + FastCGI to `api:9000` |
 | Migrations      | Manual via `artisan migrate`                     | Auto on container start (entrypoint waits for the DB, then runs `migrate --force` and `artisan optimize`) |
 | Bind mounts     | `./api`, `./ui` (live edits)                     | None — image is immutable                                          |
+| Background jobs | `queue` + `scheduler` containers (15 min rates, daily banks/branches) | Same: `queue` + `scheduler` services using the API image            |
 | Exposed ports   | `8080`, `5173`, `3306`                           | Only `WEB_PORT` (defaults to `80`); `db` is internal               |
 | `APP_ENV`       | `local`                                          | `production`                                                       |
 | Image tags      | Local `bankaai/api:dev`, `bankaai/ui:dev`        | `ghcr.io/<owner>/bankaai-api:<tag>`, `ghcr.io/<owner>/bankaai-web:<tag>` |
@@ -266,9 +264,11 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml down -v
 ## Features
 
 - **Five banks** (PrivatBank, Oschadbank, PUMB, Raiffeisen Bank, Ukreximbank) seeded with the two slugs they use in MinFin and finance.ua. The `SyncBanksJob` enriches them daily with logo, legal address, phone, email, license number.
-- **Rates ingestion**:
-  - `SyncMinFinRatesJob` every 15 min — pages through `minfin.com.ua/api/currency/rates/banks/{cc}` for USD/EUR/GBP/CHF/PLN, capturing both `cash` and `card` markets.
-  - `SyncNbuRatesJob` every 15 min — pulls the NBU official rate for the same currencies.
+- **Periodic sync** (task §2) — `scheduler` runs `php artisan schedule:work`; `queue` executes jobs. Schedule in `api/routes/console.php`:
+  - `rates:sync` every 15 min → `SyncMinFinRatesJob` + `SyncNbuRatesJob` (MinFin cash/card + NBU official for USD/EUR/GBP/CHF/PLN).
+  - `banks:sync` daily at 02:00 → finance.ua directory metadata.
+  - `branches:sync` daily at 02:15 → finance.ua branch lists per bank.
+  - Manual: `php artisan rates:sync|banks:sync|branches:sync` (add `--sync` to run inline).
 - **Significant changes** — every imported rate fires a `RateImported` event. `DetectAndAnnounceChange` (queued listener) compares against the previous reading; anything moving more than 5% (configurable via `RATES_SIGNIFICANT_THRESHOLD_PCT`) is stored in `rate_changes` and a `SignificantRateChange` notification is queued via mail + database channels for every matching subscriber.
 - **Subscriptions** — authenticated users can subscribe to any (bank, currency) pair with their own threshold. Nullable `bank_id`/`currency_id` mean "any". Notifications respect the user's global `notifications_enabled` toggle.
 - **Nearest branches** — MySQL 8 spatial index (POINT, SRID 4326, generated from `lat`/`lng`) + `ST_Distance_Sphere`. ~2.5k branches across the 5 banks, refreshed daily.
@@ -294,6 +294,6 @@ check, so the in-memory SQLite test DB skips it cleanly.
 ## Notes on the current scope
 
 - Dev stack is feature-complete: API + UI + scheduler + queue + mailpit are running side-by-side with HMR.
-- Prod stack ships static SPA assets + an immutable Laravel image, with auto-migrations on boot and ready-to-push image tags. The same `bankaai/api:dev` image is reused for `queue` and `scheduler` services so there's only one runtime build target.
+- Prod stack ships static SPA assets + an immutable Laravel image, with auto-migrations on boot, **`queue` + `scheduler`** for periodic upstream sync, and ready-to-push image tags. Dev reuses `bankaai/api:dev` for `queue` and `scheduler` as well.
 - Mailpit catches every outgoing email in dev; in prod swap to a real `MAIL_*` configuration (or pull e.g. `mailhog/mailhog`).
 - No TLS termination — typically handled by a reverse proxy (Caddy, Traefik, an upstream load balancer) in front of `web` in real deployments.

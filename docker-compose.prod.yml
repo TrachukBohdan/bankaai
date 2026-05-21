@@ -38,7 +38,7 @@ services:
     networks:
       - bankaai_net
 
-  api:
+  api: &laravel
     image: ${REGISTRY:-ghcr.io}/${IMAGE_NAMESPACE:-your-github-username}/bankaai-api:${IMAGE_TAG:-latest}
     build:
       context: .
@@ -48,7 +48,7 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    environment:
+    environment: &laravel_env
       APP_NAME: ${APP_NAME:-BankaAi}
       APP_ENV: production
       APP_DEBUG: "false"
@@ -71,6 +71,28 @@ services:
       FRONTEND_URL: ${APP_URL}
     networks:
       - bankaai_net
+
+  queue:
+    <<: *laravel
+    container_name: bankaai_prod_queue
+    depends_on:
+      api:
+        condition: service_started
+    command: ["sh", "-c", "exec php artisan queue:work --tries=3 --queue=default --sleep=1"]
+    environment:
+      <<: *laravel_env
+
+  scheduler:
+    <<: *laravel
+    container_name: bankaai_prod_scheduler
+    depends_on:
+      api:
+        condition: service_started
+      queue:
+        condition: service_started
+    command: ["sh", "/usr/local/bin/scheduler-entrypoint.sh"]
+    environment:
+      <<: *laravel_env
 
   web:
     image: ${REGISTRY:-ghcr.io}/${IMAGE_NAMESPACE:-your-github-username}/bankaai-web:${IMAGE_TAG:-latest}

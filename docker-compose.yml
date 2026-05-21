@@ -89,10 +89,12 @@ services:
     restart: unless-stopped
     depends_on:
       - api
-    command: ["sh", "-c", "exec php artisan schedule:work"]
+      - queue
+    command: ["sh", "/usr/local/bin/scheduler-entrypoint.sh"]
     volumes:
       - ./api:/var/www/html
       - api_vendor:/var/www/html/vendor
+      - ./docker/api/scheduler-entrypoint.sh:/usr/local/bin/scheduler-entrypoint.sh:ro
     environment:
       APP_ENV: local
       APP_DEBUG: "true"
