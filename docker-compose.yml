@@ -41,12 +41,13 @@ services:
     environment:
       APP_ENV: local
       APP_DEBUG: "true"
+      APP_KEY: ${APP_KEY}
       APP_URL: http://localhost:${WEB_PORT:-8080}
       FRONTEND_URL: http://localhost:${WEB_PORT:-8080}
       SANCTUM_STATEFUL_DOMAINS: "localhost:${WEB_PORT:-8080},localhost:${UI_HMR_PORT:-5173},127.0.0.1:${WEB_PORT:-8080},127.0.0.1:${UI_HMR_PORT:-5173}"
       DB_CONNECTION: mysql
-      DB_HOST: db
-      DB_PORT: 3306
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT}
       DB_DATABASE: ${DB_DATABASE:-bankaai}
       DB_USERNAME: ${DB_USERNAME:-bankaai}
       DB_PASSWORD: ${DB_PASSWORD:-secret}
@@ -69,10 +70,11 @@ services:
       - api_vendor:/var/www/html/vendor
     environment:
       APP_ENV: local
+      APP_KEY: ${APP_KEY}
       APP_DEBUG: "true"
       DB_CONNECTION: mysql
-      DB_HOST: db
-      DB_PORT: 3306
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT}
       DB_DATABASE: ${DB_DATABASE:-bankaai}
       DB_USERNAME: ${DB_USERNAME:-bankaai}
       DB_PASSWORD: ${DB_PASSWORD:-secret}
@@ -98,9 +100,10 @@ services:
     environment:
       APP_ENV: local
       APP_DEBUG: "true"
+      APP_KEY: ${APP_KEY}
       DB_CONNECTION: mysql
-      DB_HOST: db
-      DB_PORT: 3306
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT}
       DB_DATABASE: ${DB_DATABASE:-bankaai}
       DB_USERNAME: ${DB_USERNAME:-bankaai}
       DB_PASSWORD: ${DB_PASSWORD:-secret}
