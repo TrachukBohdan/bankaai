@@ -2,6 +2,13 @@
 import { onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { storeToRefs } from 'pinia'
+import Card from 'primevue/card'
+import Tag from 'primevue/tag'
+import Button from 'primevue/button'
+import Message from 'primevue/message'
+import ProgressSpinner from 'primevue/progressspinner'
+import DataTable from 'primevue/datatable'
+import Column from 'primevue/column'
 import RatesTable from '@/components/RatesTable.vue'
 import { useBanksStore } from '@/stores/banks'
 
@@ -10,8 +17,7 @@ const store = useBanksStore()
 const { current, loading, error } = storeToRefs(store)
 
 function load(): void {
-  const slug = route.params.slug as string
-  void store.fetchOne(slug)
+  void store.fetchOne(route.params.slug as string)
 }
 
 onMounted(load)
@@ -20,32 +26,57 @@ watch(() => route.params.slug, load)
 
 <template>
   <section class="page">
-    <p v-if="loading" class="muted">Loading…</p>
-    <p v-if="error" class="error">{{ error }}</p>
+    <div v-if="loading && !current" class="flex justify-center p-6">
+      <ProgressSpinner />
+    </div>
+    <Message v-if="error" severity="error" :closable="false">{{ error }}</Message>
+
     <template v-if="current">
-      <header class="header card">
-        <img v-if="current.logo_url" :src="current.logo_url" :alt="current.name" class="logo" />
-        <div>
-          <h1>{{ current.name }}</h1>
-          <p v-if="current.rating" class="rating">★ {{ current.rating }}</p>
-          <p v-if="current.legal_name" class="muted">{{ current.legal_name }}</p>
-          <p v-if="current.phone">📞 {{ current.phone }}</p>
-          <p v-if="current.legal_address">📍 {{ current.legal_address }}</p>
-          <a v-if="current.website" :href="current.website" target="_blank" rel="noopener">Website</a>
-        </div>
-      </header>
+      <Card class="mb-4">
+        <template #content>
+          <div class="header">
+            <img v-if="current.logo_url" :src="current.logo_url" :alt="current.name" class="logo" />
+            <div>
+              <h1 class="page-title">{{ current.name }}</h1>
+              <Tag v-if="current.rating" :value="`★ ${current.rating}`" severity="warn" class="mb-2" />
+              <p v-if="current.legal_name" class="detail-line">{{ current.legal_name }}</p>
+              <p v-if="current.phone" class="detail-line">
+                <i class="pi pi-phone mr-1" />{{ current.phone }}
+              </p>
+              <p v-if="current.legal_address" class="detail-line">
+                <i class="pi pi-map-marker mr-1" />{{ current.legal_address }}
+              </p>
+              <a
+                v-if="current.website"
+                :href="current.website"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="mt-2 inline-link"
+              >
+                <Button label="Website" icon="pi pi-external-link" link />
+              </a>
+            </div>
+          </div>
+        </template>
+      </Card>
 
-      <h2>Current rates (cash)</h2>
-      <RatesTable :rates="current.rates ?? []" />
+      <h2 class="section-title">Current rates (cash)</h2>
+      <RatesTable :rates="current.rates ?? []" class="mb-4" />
 
-      <h2>Branches (sample)</h2>
-      <ul v-if="current.branches?.length" class="branch-list card">
-        <li v-for="b in current.branches" :key="b.id">
-          <strong>{{ b.name }}</strong>
-          <span class="muted">{{ b.address }}</span>
-        </li>
-      </ul>
-      <p v-else class="muted">No branches loaded yet.</p>
+      <h2 class="section-title">Branches (sample)</h2>
+      <DataTable
+        v-if="current.branches?.length"
+        :value="current.branches"
+        size="small"
+        striped-rows
+        paginator
+        :rows="10"
+      >
+        <Column field="name" header="Branch" />
+        <Column field="address" header="Address" />
+        <Column field="city" header="City" />
+      </DataTable>
+      <Message v-else severity="info" :closable="false">No branches loaded yet.</Message>
     </template>
   </section>
 </template>
@@ -54,7 +85,6 @@ watch(() => route.params.slug, load)
 .header {
   display: flex;
   gap: 1.5rem;
-  margin-bottom: 1.5rem;
   align-items: flex-start;
 }
 .logo {
@@ -63,22 +93,33 @@ watch(() => route.params.slug, load)
   object-fit: contain;
   flex-shrink: 0;
 }
-.rating {
-  color: #b45309;
+.page-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin: 0 0 0.5rem;
+}
+.section-title {
+  font-size: 1.15rem;
   font-weight: 600;
+  margin: 0 0 0.75rem;
 }
-.branch-list {
-  list-style: none;
-  padding: 0;
+.detail-line {
+  margin: 0.25rem 0;
+  color: var(--p-text-color);
 }
-.branch-list li {
-  padding: 0.65rem 0;
-  border-bottom: 1px solid var(--c-border);
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
+.mr-1 {
+  margin-right: 0.25rem;
 }
-.branch-list li:last-child {
-  border-bottom: none;
+.mb-2 {
+  margin-bottom: 0.5rem;
+}
+.mb-4 {
+  margin-bottom: 1.5rem;
+}
+.mt-2 {
+  margin-top: 0.5rem;
+}
+.inline-link {
+  text-decoration: none;
 }
 </style>

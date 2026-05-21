@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
+import Card from 'primevue/card'
+import Select from 'primevue/select'
 import { useCurrenciesStore } from '@/stores/currencies'
 import { useBanksStore } from '@/stores/banks'
 import { storeToRefs } from 'pinia'
@@ -8,13 +10,23 @@ const emit = defineEmits<{
   change: [filters: { bank?: string; currency?: string }]
 }>()
 
-const bank = ref('')
-const currency = ref('')
+const bank = ref<string | null>(null)
+const currency = ref<string | null>(null)
 
 const currenciesStore = useCurrenciesStore()
 const banksStore = useBanksStore()
 const { items: currencies } = storeToRefs(currenciesStore)
 const { list: banks } = storeToRefs(banksStore)
+
+const bankOptions = computed(() => [
+  { label: 'All banks', value: null },
+  ...banks.value.map((b) => ({ label: b.name, value: b.slug })),
+])
+
+const currencyOptions = computed(() => [
+  { label: 'All currencies', value: null },
+  ...currencies.value.map((c) => ({ label: `${c.code} — ${c.name}`, value: c.code })),
+])
 
 onMounted(() => {
   void currenciesStore.fetchAll()
@@ -23,48 +35,54 @@ onMounted(() => {
 
 watch([bank, currency], () => {
   emit('change', {
-    bank: bank.value || undefined,
-    currency: currency.value || undefined,
+    bank: bank.value ?? undefined,
+    currency: currency.value ?? undefined,
   })
 })
 </script>
 
 <template>
-  <form class="filters card" @submit.prevent>
-    <label>
-      Bank
-      <select v-model="bank">
-        <option value="">All banks</option>
-        <option v-for="b in banks" :key="b.slug" :value="b.slug">{{ b.name }}</option>
-      </select>
-    </label>
-    <label>
-      Currency
-      <select v-model="currency">
-        <option value="">All currencies</option>
-        <option v-for="c in currencies" :key="c.code" :value="c.code">
-          {{ c.code }} — {{ c.name }}
-        </option>
-      </select>
-    </label>
-  </form>
+  <Card class="mb-3">
+    <template #title>Filters</template>
+    <template #content>
+      <div class="gap-form-row">
+        <div class="field">
+          <label for="filter-bank">Bank</label>
+          <Select
+            id="filter-bank"
+            v-model="bank"
+            :options="bankOptions"
+            option-label="label"
+            option-value="value"
+            placeholder="All banks"
+            class="w-full"
+          />
+        </div>
+        <div class="field">
+          <label for="filter-currency">Currency</label>
+          <Select
+            id="filter-currency"
+            v-model="currency"
+            :options="currencyOptions"
+            option-label="label"
+            option-value="value"
+            placeholder="All currencies"
+            class="w-full"
+          />
+        </div>
+      </div>
+    </template>
+  </Card>
 </template>
 
 <style scoped>
-.filters {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1.25rem;
-  margin-bottom: 1.25rem;
+.field label {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-weight: 500;
+  font-size: 0.875rem;
 }
-label {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-  min-width: 200px;
-  flex: 1;
-}
-select {
-  min-width: 0;
+.mb-3 {
+  margin-bottom: 1rem;
 }
 </style>

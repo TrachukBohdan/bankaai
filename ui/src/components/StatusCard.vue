@@ -1,6 +1,11 @@
 <script setup lang="ts">
 import { onMounted } from 'vue'
 import { storeToRefs } from 'pinia'
+import Card from 'primevue/card'
+import Button from 'primevue/button'
+import Message from 'primevue/message'
+import Tag from 'primevue/tag'
+import ProgressSpinner from 'primevue/progressspinner'
 import { useStatusStore } from '@/stores/status'
 
 const store = useStatusStore()
@@ -12,53 +17,79 @@ onMounted(() => {
 </script>
 
 <template>
-  <section class="status-card card">
-    <div class="header">
-      <h2>API status</h2>
-      <button type="button" class="btn-ghost" @click="store.fetchStatus()">Refresh</button>
-    </div>
-    <p v-if="loading && !data" class="muted">Calling GET /api/status…</p>
-    <p v-if="error" class="error">{{ error }}</p>
-    <dl v-if="data">
-      <div><dt>Service</dt><dd>{{ data.service }}</dd></div>
-      <div><dt>Status</dt><dd>{{ data.status }}</dd></div>
-      <div><dt>Laravel</dt><dd>{{ data.versions.laravel }}</dd></div>
-      <div><dt>PHP</dt><dd>{{ data.versions.php }}</dd></div>
-      <div>
-        <dt>Database</dt>
-        <dd :class="data.database.connected ? 'good' : 'error'">
-          {{ data.database.connected ? 'connected' : 'down' }}
-        </dd>
+  <Card>
+    <template #title>
+      <div class="title-row">
+        <span>API status</span>
+        <Button
+          icon="pi pi-refresh"
+          label="Refresh"
+          severity="secondary"
+          size="small"
+          :loading="loading"
+          @click="store.fetchStatus()"
+        />
       </div>
-    </dl>
-  </section>
+    </template>
+    <template #content>
+      <div v-if="loading && !data" class="flex justify-center p-4">
+        <ProgressSpinner style="width: 2rem; height: 2rem" />
+      </div>
+      <Message v-if="error" severity="error" :closable="false">{{ error }}</Message>
+      <dl v-if="data" class="status-grid">
+        <dt>Service</dt>
+        <dd>{{ data.service }}</dd>
+        <dt>Status</dt>
+        <dd>
+          <Tag
+            :value="data.status"
+            :severity="data.status === 'ok' ? 'success' : 'warn'"
+          />
+        </dd>
+        <dt>Laravel</dt>
+        <dd>{{ data.versions.laravel }}</dd>
+        <dt>PHP</dt>
+        <dd>{{ data.versions.php }}</dd>
+        <dt>Database</dt>
+        <dd>
+          <Tag
+            :value="data.database.connected ? 'connected' : 'down'"
+            :severity="data.database.connected ? 'success' : 'danger'"
+          />
+        </dd>
+      </dl>
+    </template>
+  </Card>
 </template>
 
 <style scoped>
-.header {
+.title-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 0.75rem;
+  gap: 1rem;
+  width: 100%;
 }
-.header h2 {
-  margin: 0;
-}
-dl {
+.status-grid {
   display: grid;
   grid-template-columns: auto 1fr;
-  gap: 0.4rem 1.25rem;
-  margin-top: 0.5rem;
+  gap: 0.5rem 1.25rem;
+  margin: 0;
 }
-dt {
+.status-grid dt {
   font-weight: 600;
-  color: var(--c-text-muted);
+  color: var(--p-text-muted-color);
 }
-dd {
-  color: var(--c-text);
-  font-weight: 500;
+.status-grid dd {
+  margin: 0;
 }
-.good {
-  color: var(--c-good);
+.flex {
+  display: flex;
+}
+.justify-center {
+  justify-content: center;
+}
+.p-4 {
+  padding: 1rem;
 }
 </style>

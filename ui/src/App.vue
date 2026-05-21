@@ -15,10 +15,11 @@ import AppNav from '@/components/AppNav.vue'
 <style scoped>
 .app-shell {
   min-height: 100vh;
-  background: var(--c-bg);
-  color: var(--c-text);
+  display: flex;
+  flex-direction: column;
 }
 .main {
-  min-height: calc(100vh - 56px);
+  flex: 1;
+  background: var(--p-surface-100);
 }
 </style>

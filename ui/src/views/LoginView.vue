@@ -2,6 +2,11 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
+import Card from 'primevue/card'
+import InputText from 'primevue/inputtext'
+import Password from 'primevue/password'
+import Button from 'primevue/button'
+import Message from 'primevue/message'
 import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()
@@ -18,43 +23,43 @@ async function submit(): Promise<void> {
 </script>
 
 <template>
-  <section class="page auth-page">
-    <form class="card" @submit.prevent="submit">
-      <h1>Login</h1>
-      <label>
-        Email
-        <input v-model="email" type="email" required autocomplete="email" />
-      </label>
-      <label>
-        Password
-        <input v-model="password" type="password" required autocomplete="current-password" />
-      </label>
-      <p v-if="error" class="error">{{ error }}</p>
-      <button type="submit" :disabled="loading">{{ loading ? '…' : 'Sign in' }}</button>
-      <p class="muted hint">Demo: demo@bankaai.test / password</p>
-    </form>
+  <section class="page-narrow">
+    <Card>
+      <template #title>Login</template>
+      <template #content>
+        <form class="gap-form" @submit.prevent="submit">
+          <div class="field">
+            <label for="email">Email</label>
+            <InputText id="email" v-model="email" type="email" class="w-full" autocomplete="email" />
+          </div>
+          <div class="field">
+            <label for="password">Password</label>
+            <Password
+              id="password"
+              v-model="password"
+              class="w-full"
+              :feedback="false"
+              toggle-mask
+              input-class="w-full"
+              autocomplete="current-password"
+            />
+          </div>
+          <Message v-if="error" severity="error" :closable="false">{{ error }}</Message>
+          <Button type="submit" label="Sign in" icon="pi pi-sign-in" class="w-full" :loading="loading" />
+          <Message severity="secondary" :closable="false">
+            Demo: demo@bankaai.test / password
+          </Message>
+        </form>
+      </template>
+    </Card>
   </section>
 </template>
 
 <style scoped>
-.auth-page {
-  max-width: 420px;
-}
-form {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-form h1 {
-  margin-bottom: 0.25rem;
-}
-label {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-}
-.hint {
-  text-align: center;
-  margin-top: 0.25rem;
+.field label {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-weight: 500;
+  font-size: 0.875rem;
 }
 </style>

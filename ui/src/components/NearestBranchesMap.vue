@@ -49,14 +49,5 @@ function renderMarkers(): void {
 </script>
 
 <template>
-  <div ref="mapEl" class="map" />
+  <div ref="mapEl" class="map-container" />
 </template>
-
-<style scoped>
-.map {
-  height: 360px;
-  width: 100%;
-  border-radius: 12px;
-  border: 1px solid #e2e8f0;
-}
-</style>

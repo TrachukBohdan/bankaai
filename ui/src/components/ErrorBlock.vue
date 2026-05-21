@@ -1,23 +1,27 @@
 <script setup lang="ts">
+import Message from 'primevue/message'
+import Button from 'primevue/button'
+
 defineProps<{ message: string | null }>()
 const emit = defineEmits<{ retry: [] }>()
 </script>
 
 <template>
-  <div v-if="message" class="error-block">
-    <span class="error">{{ message }}</span>
-    <button class="btn btn-ghost" @click="emit('retry')">Retry</button>
-  </div>
+  <Message v-if="message" severity="error" :closable="false" class="w-full">
+    <div class="error-row">
+      <span>{{ message }}</span>
+      <Button label="Retry" icon="pi pi-refresh" size="small" severity="danger" outlined @click="emit('retry')" />
+    </div>
+  </Message>
 </template>
 
 <style scoped>
-.error-block {
+.error-row {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  padding: 0.75rem 1rem;
-  border: 1px solid var(--c-bad);
-  border-radius: 8px;
-  background: rgba(248, 81, 73, 0.08);
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  width: 100%;
 }
 </style>

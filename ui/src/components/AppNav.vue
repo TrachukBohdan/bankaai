@@ -1,93 +1,70 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
-import { RouterLink } from 'vue-router'
+import { computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
+import Menubar from 'primevue/menubar'
+import Button from 'primevue/button'
+import Tag from 'primevue/tag'
 import { useAuthStore } from '@/stores/auth'
 
+const router = useRouter()
 const auth = useAuthStore()
 const { user, isAuthenticated } = storeToRefs(auth)
 
 onMounted(() => {
   void auth.fetchMe()
 })
+
+const items = computed(() => {
+  const nav = [
+    { label: 'Banks', icon: 'pi pi-building', command: () => router.push('/banks') },
+    { label: 'Rates', icon: 'pi pi-chart-line', command: () => router.push('/rates') },
+    { label: 'Nearest', icon: 'pi pi-map-marker', command: () => router.push('/nearest') },
+    { label: 'Statistics', icon: 'pi pi-chart-bar', command: () => router.push('/statistics') },
+  ]
+  if (isAuthenticated.value) {
+    nav.push({ label: 'Profile', icon: 'pi pi-user', command: () => router.push('/profile') })
+  }
+  return nav
+})
 </script>
 
 <template>
-  <nav class="app-nav">
-    <RouterLink to="/" class="brand">BankaAi</RouterLink>
-    <div class="links">
-      <RouterLink to="/banks">Banks</RouterLink>
-      <RouterLink to="/rates">Rates</RouterLink>
-      <RouterLink to="/nearest">Nearest</RouterLink>
-      <RouterLink to="/statistics">Statistics</RouterLink>
+  <Menubar :model="items" class="app-menubar">
+    <template #start>
+      <Button
+        label="BankaAi"
+        icon="pi pi-wallet"
+        text
+        class="brand-btn"
+        @click="router.push('/')"
+      />
+    </template>
+    <template #end>
+      <Tag v-if="user" :value="user.name" severity="info" class="mr-2" />
       <template v-if="isAuthenticated">
-        <RouterLink to="/profile">Profile</RouterLink>
-        <button type="button" class="link-btn" @click="auth.logout()">Logout</button>
+        <Button label="Logout" icon="pi pi-sign-out" severity="secondary" text @click="auth.logout()" />
       </template>
       <template v-else>
-        <RouterLink to="/login">Login</RouterLink>
-        <RouterLink to="/register" class="cta">Register</RouterLink>
+        <Button label="Login" icon="pi pi-sign-in" severity="secondary" text @click="router.push('/login')" />
+        <Button label="Register" icon="pi pi-user-plus" @click="router.push('/register')" />
       </template>
-    </div>
-    <span v-if="user" class="user-pill">{{ user.name }}</span>
-  </nav>
+    </template>
+  </Menubar>
 </template>
 
 <style scoped>
-.app-nav {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 1rem;
-  padding: 0.75rem 1.25rem;
-  background: #0f172a;
-  color: #e2e8f0;
+.app-menubar {
+  border-radius: 0;
+  border-left: none;
+  border-right: none;
+  border-top: none;
 }
-.brand {
+.brand-btn :deep(.p-button-label) {
   font-weight: 700;
-  font-size: 1.15rem;
-  color: #38bdf8;
-  text-decoration: none;
+  font-size: 1.1rem;
 }
-.links {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem 1rem;
-  flex: 1;
-}
-.links a {
-  color: #cbd5e1;
-  text-decoration: none;
-  font-size: 0.95rem;
-}
-.links a.router-link-active {
-  color: #fff;
-  font-weight: 600;
-}
-.cta {
-  background: #2563eb;
-  color: #fff !important;
-  padding: 0.25rem 0.75rem;
-  border-radius: 6px;
-}
-.link-btn {
-  background: none;
-  border: none;
-  color: #cbd5e1;
-  cursor: pointer;
-  font-size: 0.95rem;
-  padding: 0;
-}
-.user-pill {
-  font-size: 0.8rem;
-  background: #1e293b;
-  padding: 0.2rem 0.6rem;
-  border-radius: 999px;
-}
-@media (max-width: 640px) {
-  .app-nav {
-    flex-direction: column;
-    align-items: flex-start;
-  }
+.mr-2 {
+  margin-right: 0.5rem;
 }
 </style>

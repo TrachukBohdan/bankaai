@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { storeToRefs } from 'pinia'
+import Card from 'primevue/card'
+import Message from 'primevue/message'
+import ProgressSpinner from 'primevue/progressspinner'
+import DatePicker from 'primevue/datepicker'
 import RateFilters from '@/components/RateFilters.vue'
 import RateHistoryChart from '@/components/RateHistoryChart.vue'
 import { useRatesStore } from '@/stores/rates'
@@ -9,10 +13,19 @@ import type { StatsFilters } from '@/stores/rates'
 const store = useRatesStore()
 const { statistics, loading, error } = storeToRefs(store)
 const filters = ref<StatsFilters>({})
+const fromDate = ref<Date | null>(null)
+const toDate = ref<Date | null>(null)
 
-function apply(f: StatsFilters): void {
-  filters.value = { ...filters.value, ...f }
-  void store.fetchStatistics(filters.value)
+function apply(f: StatsFilters = {}): void {
+  const merged: StatsFilters = { ...filters.value, ...f }
+  if (fromDate.value) {
+    merged.from = fromDate.value.toISOString().slice(0, 10)
+  }
+  if (toDate.value) {
+    merged.to = toDate.value.toISOString().slice(0, 10)
+  }
+  filters.value = merged
+  void store.fetchStatistics(merged)
 }
 
 onMounted(() => {
@@ -22,70 +35,90 @@ onMounted(() => {
 
 <template>
   <section class="page">
-    <h1>Rate statistics</h1>
+    <h1 class="page-title">Rate statistics</h1>
     <RateFilters @change="apply" />
-    <div class="dates card">
-      <label>
-        From
-        <input v-model="filters.from" type="date" @change="apply(filters)" />
-      </label>
-      <label>
-        To
-        <input v-model="filters.to" type="date" @change="apply(filters)" />
-      </label>
+
+    <Card class="mb-3">
+      <template #title>Period</template>
+      <template #content>
+        <div class="gap-form-row">
+          <div class="field">
+            <label for="stats-from">From</label>
+            <DatePicker
+              id="stats-from"
+              v-model="fromDate"
+              date-format="yy-mm-dd"
+              show-icon
+              class="w-full"
+              @update:model-value="apply()"
+            />
+          </div>
+          <div class="field">
+            <label for="stats-to">To</label>
+            <DatePicker
+              id="stats-to"
+              v-model="toDate"
+              date-format="yy-mm-dd"
+              show-icon
+              class="w-full"
+              @update:model-value="apply()"
+            />
+          </div>
+        </div>
+      </template>
+    </Card>
+
+    <div v-if="loading" class="flex justify-center p-4">
+      <ProgressSpinner />
     </div>
-    <p v-if="loading" class="muted">Loading…</p>
-    <p v-if="error" class="error">{{ error }}</p>
+    <Message v-if="error" severity="error" :closable="false" class="mb-3">{{ error }}</Message>
 
     <template v-if="statistics">
-      <p class="muted">
+      <Message severity="info" :closable="false" class="mb-3">
         Period: {{ statistics.period.from }} → {{ statistics.period.to }}
         ({{ statistics.summary.samples }} samples)
-      </p>
-      <div class="summary">
-        <section class="card">
-          <h3>Buy</h3>
-          <p>Min: <strong>{{ statistics.summary.buy.min ?? '—' }}</strong></p>
-          <p>Max: <strong>{{ statistics.summary.buy.max ?? '—' }}</strong></p>
-          <p>Avg: <strong>{{ statistics.summary.buy.avg ?? '—' }}</strong></p>
-        </section>
-        <section class="card">
-          <h3>Sell</h3>
-          <p>Min: <strong>{{ statistics.summary.sell.min ?? '—' }}</strong></p>
-          <p>Max: <strong>{{ statistics.summary.sell.max ?? '—' }}</strong></p>
-          <p>Avg: <strong>{{ statistics.summary.sell.avg ?? '—' }}</strong></p>
-        </section>
+      </Message>
+      <div class="grid cols-2 mb-3">
+        <Card>
+          <template #title>Buy</template>
+          <template #content>
+            <p>Min: <strong>{{ statistics.summary.buy.min ?? '—' }}</strong></p>
+            <p>Max: <strong>{{ statistics.summary.buy.max ?? '—' }}</strong></p>
+            <p>Avg: <strong>{{ statistics.summary.buy.avg ?? '—' }}</strong></p>
+          </template>
+        </Card>
+        <Card>
+          <template #title>Sell</template>
+          <template #content>
+            <p>Min: <strong>{{ statistics.summary.sell.min ?? '—' }}</strong></p>
+            <p>Max: <strong>{{ statistics.summary.sell.max ?? '—' }}</strong></p>
+            <p>Avg: <strong>{{ statistics.summary.sell.avg ?? '—' }}</strong></p>
+          </template>
+        </Card>
       </div>
-      <section class="card chart-section">
-        <RateHistoryChart :statistics="statistics" />
-      </section>
+      <Card>
+        <template #title>Chart</template>
+        <template #content>
+          <RateHistoryChart :statistics="statistics" />
+        </template>
+      </Card>
     </template>
   </section>
 </template>
 
 <style scoped>
-.dates {
-  display: flex;
-  gap: 1.25rem;
-  margin-bottom: 1.25rem;
-  flex-wrap: wrap;
+.page-title {
+  font-size: 1.75rem;
+  font-weight: 700;
+  margin-bottom: 1rem;
 }
-.dates label {
-  flex: 1;
-  min-width: 160px;
+.field label {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-weight: 500;
+  font-size: 0.875rem;
 }
-.summary {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1rem;
-  margin: 1rem 0;
-}
-.chart-section {
-  margin-top: 1rem;
-}
-@media (max-width: 640px) {
-  .summary {
-    grid-template-columns: 1fr;
-  }
+.mb-3 {
+  margin-bottom: 1rem;
 }
 </style>

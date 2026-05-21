@@ -5,8 +5,8 @@ Monorepo for the BankaAi test assignment.
 - `api/` — Laravel 13 REST API (PHP 8.4, php-fpm) with Sanctum SPA cookie auth,
   per-15-minute polling of MinFin + NBU rates, daily refresh of banks +
   branches, significant-change detection (≥ 5%), email alerts via subscriptions.
-- `ui/` — Vue 3 + Vite SPA (TypeScript, Pinia, Vue Router, Axios) with Leaflet
-  map for branches and Chart.js for statistics.
+- `ui/` — Vue 3 + Vite SPA (TypeScript, [PrimeVue](https://primevue.org/) Aura theme,
+  Pinia, Vue Router, Axios) with Leaflet map and Chart.js for statistics.
 - `docker/` — Dockerfiles and Nginx config used by `docker-compose.yml` and
   `docker-compose.prod.yml`.
 - `docs/` — Task description and AI usage log (`LLM_INSTRUCTIONS.md`).
@@ -129,7 +129,7 @@ docker compose down -v
 ```text
 BankaAi/
 ├── api/                       Laravel application (bind-mounted into api and nginx containers)
-├── ui/                        Vue 3 + Vite application (bind-mounted into the ui container)
+├── ui/                        Vue 3 + PrimeVue + Vite (bind-mounted into the ui container)
 ├── docker/
 │   ├── api/Dockerfile         php:8.4-fpm + extensions (pdo_mysql, mbstring, bcmath, zip, intl) + composer
 │   ├── ui/Dockerfile          node:20-alpine + npm install
