@@ -19,6 +19,7 @@ class DatabaseSeeder extends Seeder
             CurrencySeeder::class,
             BankSeeder::class,
             ExchangeRateSeeder::class,
+            BranchSeeder::class,
         ]);
 
         // Pull logo, phone, legal address, etc. from finance.ua so /api/banks is

@@ -50,11 +50,12 @@ cp .env.example .env
 # 2. Build images and start everything
 docker compose up --build -d
 
-# 3. Run migrations and seed (includes finance.ua bank metadata sync)
+# 3. Run migrations and seed (rates + branches from database/data/*.json; bank metadata from finance.ua)
 docker compose exec api php artisan migrate --seed
 
-# 4. (Optional) One-time backfill — the scheduler + queue containers keep data fresh automatically
-docker compose exec api php artisan banks:sync --sync
+# 4. (Optional) Re-import JSON fixtures or refresh live data
+docker compose exec api php artisan rates:import-json
+docker compose exec api php artisan branches:import-json
 docker compose exec api php artisan rates:sync --sync
 docker compose exec api php artisan branches:sync --sync
 ```
