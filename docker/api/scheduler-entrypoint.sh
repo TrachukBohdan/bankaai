@@ -5,9 +5,10 @@ set -eu
 
 cd /var/www/html
 
+echo "test..."
 echo "[scheduler] queuing initial rate and branch sync…"
-php artisan rates:sync --no-interaction 2>/dev/null || true
-php artisan branches:sync --no-interaction 2>/dev/null || true
+php artisan rates:sync --no-interaction  || true
+php artisan branches:sync --no-interaction || true
 
 echo "[scheduler] starting schedule:work (periodic tasks from routes/console.php)…"
-exec php artisan schedule:work
+exec php artisan schedule:work --no-interaction || true

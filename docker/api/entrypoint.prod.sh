@@ -50,10 +50,12 @@ until php -r "
     sleep 1
 done
 echo "[entrypoint] database reachable after ${ATTEMPTS}s."
+echo "[entrypoint] migrate db"
+php artisan migrate --no-interaction --force
 
 # --- 3. Cache for production ---------------------------------------------
 echo "[entrypoint] caching config, routes, views, events..."
-php artisan optimize
+php artisan optimize --no-interaction
 
 # --- 4. Hand off ----------------------------------------------------------
 echo "[entrypoint] starting php-fpm..."
