@@ -78,6 +78,7 @@ was sent to Claude Opus 4.7 inside Cursor.
 | 8 | "`http://localhost:8080/node_modules/.vite/deps/pinia.js?v=6abb1629` 403 Forbidden"               | Agent |
 | 9 | "Make simple test controller and display data from it in ui."                                     | Agent |
 |10 | "Update `docs/LLM_INSTRUCTIONS.md`."                                                              | Agent |
+|11 | "Please update `docs/LLM_INSTRUCTIONS.md` and Readme."                                            | Agent |
 
 Before generating the plan in prompt #2 the assistant asked two clarifying
 multiple-choice questions via Cursor's question UI:
@@ -240,7 +241,7 @@ Infra additions:
 
 ### 6.6 What was refined by hand in this pass
 
-- `BranchesMap.vue` — initial TS pass had `LatLngTuple | undefined` slipping
+- `NearestBranchesMap.vue` — initial TS pass had `LatLngTuple | undefined` slipping
   into `setView`. Caught by `vue-tsc` and tightened with a truthy check.
 - `RegisterController` — `__invoke` return type was `Response` but the body
   returned `JsonResponse`. Tightened to `JsonResponse` after the test runner
@@ -254,10 +255,76 @@ Infra additions:
 
 - All Dockerfiles, `docker-compose.yml`, `docker-compose.prod.yml`,
   `docker/nginx/default.conf`, `docker/web/default.conf`, `docker/api/*`,
-  `.github/workflows/publish-images.yml`
-- Every file listed under §6.5 above
+  `.github/workflows/publish-images.yml`, `Makefile`
+- Every file listed under §6.5 and §8.3 above
 - `README.md`, `.env.example`, `.env.prod.example`, `.gitignore`,
   `docs/task.md` (translation), this file
 
 Files mostly untouched from the upstream Laravel / `create-vue` scaffolds are
 not listed here.
+
+## 8. Ops / seeding pass — May 2026 (Makefile, JSON branches, prod polish)
+
+Follow-up work after the feature pass: make dev and prod repeatable without
+memorising long `docker compose` invocations, seed branches offline from a
+committed fixture, and align documentation with the Makefile and GHCR workflow.
+
+### 8.1 Prompts that drove this pass
+
+| # | Prompt summary                                      | Mode  |
+|---|-----------------------------------------------------|-------|
+| 1 | "Please update `docs/LLM_INSTRUCTIONS.md` and Readme." | Agent |
+
+### 8.2 What was generated or changed
+
+1. **Root `Makefile`** — `dev_start` / `dev_build` / `dev_reset` and
+   `prod_start` / `prod_build` / `prod_push` / `prod_pull` / `prod_reset` /
+   `prod_login` / `prod_logout`. Both stacks use a gitignored `.env` copied from
+   the matching `*.example` template (`PROD_COMPOSE` passes `--env-file .env -f
+   docker-compose.prod.yml`).
+2. **Branch fixture seeding** — `api/database/data/branches.json` (~29k rows,
+   finance.ua snapshot). `BranchesJsonImporter` + `BranchSeeder` +
+   `branches:import-json` artisan command; `BranchesJsonImporterTest` in PHPUnit.
+   `DatabaseSeeder` still calls `SyncBanksJob::dispatchSync()` after seed so bank
+   metadata is live-enriched even when branches come from JSON.
+3. **`ExchangeRateSeeder`** — synthetic MinFin cash history (3 months × 5 banks ×
+   5 currencies) so statistics charts work immediately without waiting for sync.
+4. **Production runtime** — `docker/api/entrypoint.prod.sh` (wait for MySQL,
+   `migrate --force`, `optimize`, php-fpm), `docker/api/scheduler-entrypoint.sh`
+   (queues initial `rates:sync` + `branches:sync`, then `schedule:work`),
+   multi-stage `docker/api/prod.Dockerfile` and `docker/web/Dockerfile`,
+   `docker-compose.prod.yml` with YAML anchors for shared Laravel env.
+5. **CI** — `.github/workflows/publish-images.yml` builds and pushes
+   `bankaai-api` and `bankaai-web` to GHCR (`linux/amd64` + `linux/arm64`) on
+   `main`, semver tags, and `workflow_dispatch`.
+6. **Documentation** — `README.md` (Makefile table, corrected env file names,
+   removed non-existent `rates:import-json`, branch JSON seeding notes);
+   split dev `.env.example` from prod `.env.prod.example` (the root
+   `.env.example` had accidentally contained prod template content).
+
+### 8.3 Decisions changed in this pass
+
+| Initial choice                         | Reason it changed                                      | Final decision                                      |
+|----------------------------------------|--------------------------------------------------------|-----------------------------------------------------|
+| Document prod env as `.env.prod`       | `Makefile` and Compose both use `--env-file .env`      | README + `.env.prod.example` comments say `cp … .env` |
+| README listed `rates:import-json`      | No such artisan command exists                         | Document only `branches:import-json` + `*:sync`     |
+| Dev `DB_HOST=bankaai_db` in examples   | Compose service name on the bridge network is `db`     | Dev `.env.example` sets `DB_HOST=db`                |
+| Pull ~2.6k branches only at first seed   | Live `branches:sync` during dev was slow and flaky     | Commit `branches.json` snapshot; daily sync in prod   |
+
+### 8.4 Files with high AI involvement in this pass
+
+- `Makefile`
+- `api/database/data/branches.json` (generated snapshot; large committed asset)
+- `api/app/Services/Branches/BranchesJsonImporter.php`
+- `api/app/Console/Commands/ImportBranchesJsonCommand.php`
+- `api/database/seeders/{BranchSeeder,ExchangeRateSeeder,Database}Seeder.php`
+- `api/tests/Feature/BranchesJsonImporterTest.php`
+- `docker/api/{entrypoint.prod.sh,scheduler-entrypoint.sh,prod.Dockerfile,php-prod.ini}`
+- `docker/web/{Dockerfile,default.conf}`
+- `docker-compose.prod.yml`, `.github/workflows/publish-images.yml`
+- `.env.example`, `.env.prod.example`, `README.md`, this file
+
+### 8.5 Manual refinement
+
+- Corrected `NearestBranchesMap.vue` name in §6.6 (was `BranchesMap.vue`).
+- Removed stray `echo "test..."` from `scheduler-entrypoint.sh` during the doc pass.

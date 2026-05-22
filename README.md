@@ -43,20 +43,31 @@ That's it. PHP, Composer, Node and npm are **not** required on the host — ever
 
 ## Quick start
 
+**One-liner (recommended):**
+
 ```bash
-# 1. (Optional) copy env defaults; the compose file works without this step
+make dev_start
+```
+
+This copies `.env.example` → `.env` and `api/.env.example` → `api/.env`, builds and starts the dev stack, runs `migrate`, and seeds the database (currencies, banks, synthetic rate history for charts, ~29k branches from `api/database/data/branches.json`, then a synchronous `SyncBanksJob` for finance.ua metadata).
+
+Set `APP_KEY` in `.env` before the first run if migrations fail (generate with `docker compose run --rm --no-deps api php artisan key:generate --show` and paste into `.env`).
+
+**Manual equivalent:**
+
+```bash
 cp .env.example .env
-
-# 2. Build images and start everything
+cp api/.env.example api/.env
 docker compose up --build -d
-
-# 3. Run migrations and seed (rates + branches from database/data/*.json; bank metadata from finance.ua)
 docker compose exec api php artisan migrate --seed
+```
 
-# 4. (Optional) Re-import JSON fixtures or refresh live data
-docker compose exec api php artisan rates:import-json
+**Refresh data from fixtures or live upstreams:**
+
+```bash
 docker compose exec api php artisan branches:import-json
 docker compose exec api php artisan rates:sync --sync
+docker compose exec api php artisan banks:sync --sync
 docker compose exec api php artisan branches:sync --sync
 ```
 
@@ -85,6 +96,24 @@ A demo account is pre-seeded:
 | `mailpit`   | `axllent/mailpit:latest`                            | `8025`         | `mailpit:1025` |
 
 The browser hits the API and the SPA through `nginx` on `http://localhost:8080`; the SPA reads its API base URL from `VITE_API_URL` (see `ui/.env.development`). The Vite dev server is **also** exposed directly on `localhost:5173` so the HMR WebSocket goes browser ↔ Vite without traversing nginx — this avoids `permessage-deflate` / `RSV1` issues that the WebSocket proxy can introduce and keeps a Vite WS crash from cascading through the proxy.
+
+## Makefile
+
+The root `Makefile` wraps common dev and prod workflows. It uses `.env` (copied from the matching `*.example` file) for Compose variable substitution.
+
+| Target        | What it does                                                                 |
+|---------------|-------------------------------------------------------------------------------|
+| `make dev_start`  | Dev: copy env templates, `docker compose up`, migrate + seed              |
+| `make dev_build`  | Dev: `docker compose build`                                               |
+| `make dev_reset`  | Dev: `docker compose down -v` (wipes DB + named volumes)                  |
+| `make prod_start` | Prod: copy `.env.prod.example` → `.env`, pull/up prod stack, `db:seed`    |
+| `make prod_build` | Prod: build `bankaai-api` and `bankaai-web` images locally                |
+| `make prod_push`  | Prod: push images to GHCR (after `make prod_login`)                     |
+| `make prod_pull`  | Prod: pull images from GHCR                                             |
+| `make prod_reset` | Prod: `docker compose … down -v`                                        |
+| `make prod_login` | `docker login ghcr.io` (requires `GITHUB_TOKEN` in the environment)     |
+
+`prod_login` / `prod_push` expect `IMAGE_NAMESPACE` in `.env` to match your GHCR owner (lowercase), e.g. `trachukbohdan`.
 
 ## Common commands
 
@@ -126,18 +155,27 @@ docker compose down -v
 
 ```text
 BankaAi/
-├── api/                       Laravel application (bind-mounted into api and nginx containers)
-├── ui/                        Vue 3 + PrimeVue + Vite (bind-mounted into the ui container)
+├── api/                       Laravel application (bind-mounted in dev)
+│   └── database/data/         Committed fixtures (e.g. branches.json from finance.ua)
+├── ui/                        Vue 3 + PrimeVue + Vite (bind-mounted in dev)
 ├── docker/
-│   ├── api/Dockerfile         php:8.4-fpm + extensions (pdo_mysql, mbstring, bcmath, zip, intl) + composer
-│   ├── ui/Dockerfile          node:20-alpine + npm install
-│   ├── nginx/default.conf     FastCGI for Laravel, reverse-proxy + WS upgrade for Vite
-│   └── mysql/                 Reserved for MySQL init scripts / my.cnf when needed
-├── docker-compose.yml         Four services: db, api, ui, nginx (single bankaai_net bridge network)
-├── .env.example               Overridable WEB_PORT, DB_PORT, DB credentials
+│   ├── api/Dockerfile         Dev php-fpm image
+│   ├── api/prod.Dockerfile    Multi-stage production API image
+│   ├── api/entrypoint.prod.sh Wait for DB, migrate, optimize, then php-fpm
+│   ├── api/scheduler-entrypoint.sh  Initial sync + schedule:work
+│   ├── ui/Dockerfile          node:20-alpine dev server
+│   ├── web/Dockerfile         Multi-stage nginx + built SPA (prod)
+│   ├── nginx/default.conf     Dev gateway (FastCGI + Vite proxy)
+│   └── web/default.conf       Prod gateway (static assets + FastCGI)
+├── docker-compose.yml         Dev: db, api, queue, scheduler, mailpit, ui, nginx
+├── docker-compose.prod.yml      Prod: db, api, queue, scheduler, web (GHCR images)
+├── Makefile                   dev_start / prod_start / build / push helpers
+├── .env.example               Dev compose overrides (WEB_PORT, DB_*, APP_KEY)
+├── .env.prod.example          Prod compose overrides (registry, secrets)
+├── .github/workflows/         publish-images.yml → GHCR on push to main / tags
 ├── docs/
 │   ├── task.md                Original task description
-│   └── LLM_INSTRUCTIONS.md    Log of AI usage (which prompts, which model, what was hand-edited)
+│   └── LLM_INSTRUCTIONS.md    Log of AI usage (prompts, models, hand-edits)
 └── README.md                  You are here
 ```
 
@@ -164,34 +202,35 @@ What changes vs dev:
 | Background jobs | `queue` + `scheduler` containers (15 min rates, daily banks/branches) | Same: `queue` + `scheduler` services using the API image            |
 | Exposed ports   | `8080`, `5173`, `3306`                           | Only `WEB_PORT` (defaults to `80`); `db` is internal               |
 | `APP_ENV`       | `local`                                          | `production`                                                       |
-| Image tags      | Local `bankaai/api:dev`, `bankaai/ui:dev`        | `ghcr.io/TrachukBohdan/bankaai-api:<tag>`, `ghcr.io/TrachukBohdan/bankaai-web:<tag>` |
+| Image tags      | Local `bankaai/api:dev`, `bankaai/ui:dev`        | `ghcr.io/<owner>/bankaai-api:<tag>`, `ghcr.io/<owner>/bankaai-web:<tag>` (owner lowercase) |
 
 ### 1. Configure
 
 ```bash
-cp .env.prod.example .env.prod
-# Edit .env.prod and set at least:
-#   IMAGE_NAMESPACE=TrachukBohdan
-#   APP_KEY=base64:...        # see step 2
+cp .env.prod.example .env
+# Edit .env and set at least:
+#   IMAGE_NAMESPACE=trachukbohdan   # GHCR owner, lowercase
+#   APP_KEY=base64:...              # see step 2
 #   APP_URL=https://your-domain
 #   DB_PASSWORD, DB_ROOT_PASSWORD (strong passwords)
 ```
 
-`.env.prod` is gitignored.
+`.env` is gitignored.
 
 ### 2. Generate `APP_KEY` once
 
 ```bash
-docker compose --env-file .env.prod -f docker-compose.prod.yml \
+docker compose --env-file .env -f docker-compose.prod.yml \
     run --rm --no-deps api php artisan key:generate --show
 ```
 
-Paste the printed `base64:...` value into `APP_KEY` in `.env.prod`.
+Paste the printed `base64:...` value into `APP_KEY` in `.env`.
 
 ### 3. Build locally
 
 ```bash
-docker compose --env-file .env.prod -f docker-compose.prod.yml build
+make prod_build
+# or: docker compose --env-file .env -f docker-compose.prod.yml build
 ```
 
 This produces two images tagged according to `REGISTRY` / `IMAGE_NAMESPACE` / `IMAGE_TAG`:
@@ -202,12 +241,10 @@ This produces two images tagged according to `REGISTRY` / `IMAGE_NAMESPACE` / `I
 ### 4. Push to GitHub Container Registry
 
 ```bash
-# One-time auth — use a Personal Access Token (classic) with the `write:packages`
-# scope, or a fine-grained token with "Read and write" on Packages for the target
-# user/org. See https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry
-echo "<GHCR_TOKEN>" | docker login ghcr.io -u TrachukBohdan --password-stdin
-
-docker compose --env-file .env.prod -f docker-compose.prod.yml push
+# One-time auth — PAT with write:packages, or fine-grained "Read and write" on Packages
+export GITHUB_TOKEN=<token>
+make prod_login
+make prod_push
 ```
 
 ### 5. Pull and run anywhere
@@ -215,14 +252,15 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml push
 On the deployment host (only Docker required, nothing else):
 
 ```bash
-git clone https://github.com/<owner>/BankaAi.git && cd BankaAi  # for the compose file
-cp .env.prod.example .env.prod  # then edit secrets as above
+git clone https://github.com/<owner>/BankaAi.git && cd BankaAi
+cp .env.prod.example .env   # then edit secrets as above
 
-docker compose --env-file .env.prod -f docker-compose.prod.yml pull
-docker compose --env-file .env.prod -f docker-compose.prod.yml up -d
+make prod_pull
+make prod_start
+# prod_start also runs db:seed — use only on first deploy or when you want demo data reset
 
-docker compose --env-file .env.prod -f docker-compose.prod.yml ps
-docker compose --env-file .env.prod -f docker-compose.prod.yml logs -f api
+docker compose --env-file .env -f docker-compose.prod.yml ps
+docker compose --env-file .env -f docker-compose.prod.yml logs -f api
 ```
 
 The first start automatically waits for MySQL, runs `php artisan migrate --force`, then `php artisan optimize` before php-fpm.
@@ -240,26 +278,26 @@ Common tags it produces:
 Verify after a run by listing your packages on the GitHub UI (`/<owner>?tab=packages`) or:
 
 ```bash
-docker pull ghcr.io/TrachukBohdan/bankaai-api:latest
-docker pull ghcr.io/TrachukBohdan/bankaai-web:latest
+docker pull ghcr.io/trachukbohdan/bankaai-api:latest
+docker pull ghcr.io/trachukbohdan/bankaai-web:latest
 ```
 
 ### Useful prod commands
 
 ```bash
-# Re-run migrations explicitly (also runs on every container start, but harmless)
-docker compose --env-file .env.prod -f docker-compose.prod.yml \
+# Re-run migrations explicitly (also runs on every api container start, but harmless)
+docker compose --env-file .env -f docker-compose.prod.yml \
     exec api php artisan migrate --force
 
 # Drop into the api container
-docker compose --env-file .env.prod -f docker-compose.prod.yml exec api sh
+docker compose --env-file .env -f docker-compose.prod.yml exec api sh
 
-# Clear Laravel caches (optimize re-runs on next start)
-docker compose --env-file .env.prod -f docker-compose.prod.yml \
+# Clear Laravel caches (optimize re-runs on next api start)
+docker compose --env-file .env -f docker-compose.prod.yml \
     exec api php artisan optimize:clear
 
-# Full reset (will wipe the db_data volume!)
-docker compose --env-file .env.prod -f docker-compose.prod.yml down -v
+# Full reset (wipes the db_data volume)
+make prod_reset
 ```
 
 ## Features
@@ -272,7 +310,7 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml down -v
   - Manual: `php artisan rates:sync|banks:sync|branches:sync` (add `--sync` to run inline).
 - **Significant changes** — every imported rate fires a `RateImported` event. `DetectAndAnnounceChange` (queued listener) compares against the previous reading; anything moving more than 5% (configurable via `RATES_SIGNIFICANT_THRESHOLD_PCT`) is stored in `rate_changes` and a `SignificantRateChange` notification is queued via mail + database channels for every matching subscriber.
 - **Subscriptions** — authenticated users can subscribe to any (bank, currency) pair with their own threshold. Nullable `bank_id`/`currency_id` mean "any". Notifications respect the user's global `notifications_enabled` toggle.
-- **Nearest branches** — MySQL 8 spatial index (POINT, SRID 4326, generated from `lat`/`lng`) + `ST_Distance_Sphere`. ~2.5k branches across the 5 banks, refreshed daily.
+- **Nearest branches** — MySQL 8 spatial index (POINT, SRID 4326, generated from `lat`/`lng`) + `ST_Distance_Sphere`. Dev seed loads ~29k rows from `api/database/data/branches.json` (finance.ua snapshot); `branches:sync` refreshes from the live API daily.
 - **REST API**: `/api/currencies`, `/api/banks`, `/api/banks/{slug}`, `/api/rates`, `/api/rates/nbu` (rates + per-currency average across banks), `/api/rates/statistics`, `/api/rates/changes`, `/api/branches/nearest`. Auth via Sanctum cookies: `/api/auth/register`, `/api/auth/login`, `/api/auth/logout`, `/api/me`, `/api/me/subscriptions`.
 - **Frontend** — fully implemented views: Home (NBU + bank average highlights), Banks list, Bank detail (with map of branches), Rates (filterable), NBU + averages, Nearest branches (Leaflet map + table, with `navigator.geolocation`), Statistics (Chart.js daily line + min/max/avg), History of significant changes, Login/Register, Profile + subscription management.
 
@@ -294,7 +332,7 @@ check, so the in-memory SQLite test DB skips it cleanly.
 
 ## Notes on the current scope
 
-- Dev stack is feature-complete: API + UI + scheduler + queue + mailpit are running side-by-side with HMR.
-- Prod stack ships static SPA assets + an immutable Laravel image, with auto-migrations on boot, **`queue` + `scheduler`** for periodic upstream sync, and ready-to-push image tags. Dev reuses `bankaai/api:dev` for `queue` and `scheduler` as well.
+- Dev stack is feature-complete: API + UI + scheduler + queue + mailpit, with HMR on a direct Vite port.
+- Prod stack ships static SPA assets + an immutable Laravel image, auto-migrations on api boot (`entrypoint.prod.sh`), **`queue` + `scheduler`** for periodic upstream sync, and GHCR images built by `.github/workflows/publish-images.yml`. Use `make dev_start` / `make prod_start` for repeatable env setup.
 - Mailpit catches every outgoing email in dev; in prod swap to a real `MAIL_*` configuration (or pull e.g. `mailhog/mailhog`).
 - No TLS termination — typically handled by a reverse proxy (Caddy, Traefik, an upstream load balancer) in front of `web` in real deployments.
