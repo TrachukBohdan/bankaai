@@ -255,7 +255,7 @@ Infra additions:
 
 - All Dockerfiles, `docker-compose.yml`, `docker-compose.prod.yml`,
   `docker/nginx/default.conf`, `docker/web/default.conf`, `docker/api/*`,
-  `.github/workflows/publish-images.yml`, `Makefile`
+  `Makefile`
 - Every file listed under §6.5 and §8.3 above
 - `README.md`, `.env.example`, `.env.prod.example`, `.gitignore`,
   `docs/task.md` (translation), this file
@@ -294,9 +294,8 @@ committed fixture, and align documentation with the Makefile and GHCR workflow.
    (queues initial `rates:sync` + `branches:sync`, then `schedule:work`),
    multi-stage `docker/api/prod.Dockerfile` and `docker/web/Dockerfile`,
    `docker-compose.prod.yml` with YAML anchors for shared Laravel env.
-5. **CI** — `.github/workflows/publish-images.yml` builds and pushes
-   `bankaai-api` and `bankaai-web` to GHCR (`linux/amd64` + `linux/arm64`) on
-   `main`, semver tags, and `workflow_dispatch`.
+5. **CI (later removed)** — `.github/workflows/publish-images.yml` was added
+   then dropped; GHCR publish is Makefile-only (see §9).
 6. **Documentation** — `README.md` (Makefile table, corrected env file names,
    removed non-existent `rates:import-json`, branch JSON seeding notes);
    split dev `.env.example` from prod `.env.prod.example` (the root
@@ -321,10 +320,44 @@ committed fixture, and align documentation with the Makefile and GHCR workflow.
 - `api/tests/Feature/BranchesJsonImporterTest.php`
 - `docker/api/{entrypoint.prod.sh,scheduler-entrypoint.sh,prod.Dockerfile,php-prod.ini}`
 - `docker/web/{Dockerfile,default.conf}`
-- `docker-compose.prod.yml`, `.github/workflows/publish-images.yml`
+- `docker-compose.prod.yml` (and briefly `.github/workflows/publish-images.yml`, later removed)
 - `.env.example`, `.env.prod.example`, `README.md`, this file
 
 ### 8.5 Manual refinement
 
 - Corrected `NearestBranchesMap.vue` name in §6.6 (was `BranchesMap.vue`).
 - Removed stray `echo "test..."` from `scheduler-entrypoint.sh` during the doc pass.
+
+## 9. Documentation sync — May 2026
+
+Second documentation pass: align README and this file with the repo as it runs
+today (Makefile behaviour, env templates, removed CI workflow).
+
+### 9.1 Prompts
+
+| # | Prompt summary | Mode  |
+|---|----------------|-------|
+| 1 | "Please update `docs/LLM_INSTRUCTIONS.md` and Readme." | Agent |
+| 2 | "update docs" | Agent |
+
+### 9.2 Changes
+
+1. **README** — detached dev quick start (`dev_build` + `up -d`); documented
+   foreground `make dev_start`; `prod_logout`; manual GHCR publish (§6) instead
+   of GitHub Actions; accurate API route list (`/rates/history`); frontend
+   routes match `ui/src/router/index.ts` (no separate “changes history” page);
+   `LoadingBlock` / `ErrorBlock` / `leafletIcons.ts` noted.
+2. **Env templates** — restored dev-only root `.env.example` (`DB_HOST=db`, dev
+   ports); fixed `.env.prod.example` header to `cp … .env` + Makefile.
+3. **CI** — `.github/workflows/publish-images.yml` removed from the tree;
+   images are published with `make prod_build` / `make prod_push` only.
+4. **`scheduler-entrypoint.sh`** — removed debug `echo "test..."` again (had
+   reappeared in the working tree).
+
+### 9.3 Decisions
+
+| Item | Final state |
+|------|-------------|
+| GHCR automation | Local Makefile push/pull; no in-repo workflow |
+| Dev env file | Single gitignored `.env` from `.env.example` |
+| Prod env file | Same `.env` filename, content from `.env.prod.example` |

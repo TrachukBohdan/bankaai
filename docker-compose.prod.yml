@@ -13,9 +13,8 @@ name: bankaai-prod
 # (with `docker compose -f docker-compose.prod.yml build`) before pushing.
 #
 # Run with:
-#   cp .env.prod.example .env.prod  # then fill in APP_KEY, secrets, etc.
-#   docker compose --env-file .env.prod -f docker-compose.prod.yml pull
-#   docker compose --env-file .env.prod -f docker-compose.prod.yml up -d
+#   cp .env.prod.example .env  # then fill in APP_KEY, secrets, etc.
+#   make prod_pull && make prod_start
 
 services:
   db:

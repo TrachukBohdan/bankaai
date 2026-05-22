@@ -43,24 +43,24 @@ That's it. PHP, Composer, Node and npm are **not** required on the host — ever
 
 ## Quick start
 
-**One-liner (recommended):**
+**Recommended:**
 
 ```bash
-make dev_start
-```
-
-This copies `.env.example` → `.env` and `api/.env.example` → `api/.env`, builds and starts the dev stack, runs `migrate`, and seeds the database (currencies, banks, synthetic rate history for charts, ~29k branches from `api/database/data/branches.json`, then a synchronous `SyncBanksJob` for finance.ua metadata).
-
-Set `APP_KEY` in `.env` before the first run if migrations fail (generate with `docker compose run --rm --no-deps api php artisan key:generate --show` and paste into `.env`).
-
-**Manual equivalent:**
-
-```bash
-cp .env.example .env
-cp api/.env.example api/.env
-docker compose up --build -d
+cp .env.example .env && cp api/.env.example api/.env
+make dev_build
+docker compose up -d
 docker compose exec api php artisan migrate --seed
 ```
+
+Or use `make dev_start`, which copies the env files, runs `docker compose up` in the **foreground** (logs attached), then migrate + seed. Press Ctrl+C to stop; re-run with `docker compose up -d` for a detached stack.
+
+First-time setup: set `APP_KEY` in `.env` if migrate fails:
+
+```bash
+docker compose run --rm --no-deps api php artisan key:generate --show
+```
+
+Seed contents: currencies, five banks, synthetic 3-month rate history (`ExchangeRateSeeder`), ~29k branches from `api/database/data/branches.json`, then synchronous `SyncBanksJob` for live finance.ua metadata.
 
 **Refresh data from fixtures or live upstreams:**
 
@@ -101,19 +101,20 @@ The browser hits the API and the SPA through `nginx` on `http://localhost:8080`;
 
 The root `Makefile` wraps common dev and prod workflows. It uses `.env` (copied from the matching `*.example` file) for Compose variable substitution.
 
-| Target        | What it does                                                                 |
-|---------------|-------------------------------------------------------------------------------|
-| `make dev_start`  | Dev: copy env templates, `docker compose up`, migrate + seed              |
-| `make dev_build`  | Dev: `docker compose build`                                               |
-| `make dev_reset`  | Dev: `docker compose down -v` (wipes DB + named volumes)                  |
-| `make prod_start` | Prod: copy `.env.prod.example` → `.env`, pull/up prod stack, `db:seed`    |
-| `make prod_build` | Prod: build `bankaai-api` and `bankaai-web` images locally                |
-| `make prod_push`  | Prod: push images to GHCR (after `make prod_login`)                     |
-| `make prod_pull`  | Prod: pull images from GHCR                                             |
-| `make prod_reset` | Prod: `docker compose … down -v`                                        |
-| `make prod_login` | `docker login ghcr.io` (requires `GITHUB_TOKEN` in the environment)     |
+| Target            | What it does                                                                  |
+|-------------------|-------------------------------------------------------------------------------|
+| `make dev_start`  | Dev: copy env templates, `docker compose up` (foreground), migrate + seed   |
+| `make dev_build`  | Dev: `docker compose build`                                                   |
+| `make dev_reset`  | Dev: `docker compose down -v` (wipes DB + named volumes)                      |
+| `make prod_start` | Prod: copy env templates, `up -d`, `db:seed` (migrations run in api entrypoint) |
+| `make prod_build` | Prod: build `bankaai-api` and `bankaai-web` images locally                    |
+| `make prod_push`  | Prod: push images to GHCR (after `make prod_login`)                           |
+| `make prod_pull`  | Prod: pull images from GHCR                                                   |
+| `make prod_reset` | Prod: `docker compose … down -v`                                              |
+| `make prod_login` | `docker login ghcr.io` (requires `GITHUB_TOKEN` in the environment)           |
+| `make prod_logout`| `docker logout ghcr.io`                                                       |
 
-`prod_login` / `prod_push` expect `IMAGE_NAMESPACE` in `.env` to match your GHCR owner (lowercase), e.g. `trachukbohdan`.
+`prod_login` uses the GitHub user `TrachukBohdan`; `IMAGE_NAMESPACE` in `.env` must be the **lowercase** GHCR owner (e.g. `trachukbohdan`).
 
 ## Common commands
 
@@ -148,7 +149,7 @@ docker compose exec db mysql -ubankaai -psecret bankaai
 docker compose down
 
 # Stop AND wipe the database + named volumes (full reset)
-docker compose down -v
+make dev_reset
 ```
 
 ## Project layout
@@ -172,7 +173,6 @@ BankaAi/
 ├── Makefile                   dev_start / prod_start / build / push helpers
 ├── .env.example               Dev compose overrides (WEB_PORT, DB_*, APP_KEY)
 ├── .env.prod.example          Prod compose overrides (registry, secrets)
-├── .github/workflows/         publish-images.yml → GHCR on push to main / tags
 ├── docs/
 │   ├── task.md                Original task description
 │   └── LLM_INSTRUCTIONS.md    Log of AI usage (prompts, models, hand-edits)
@@ -265,22 +265,18 @@ docker compose --env-file .env -f docker-compose.prod.yml logs -f api
 
 The first start automatically waits for MySQL, runs `php artisan migrate --force`, then `php artisan optimize` before php-fpm.
 
-### 6. Automated builds via GitHub Actions
+### 6. Publish images to GHCR
 
-`.github/workflows/publish-images.yml` builds both images for `linux/amd64` and `linux/arm64` and pushes them to GHCR on every push to `main`, on every `v*.*.*` tag, and on manual `workflow_dispatch`. It uses the built-in `GITHUB_TOKEN`; no extra secrets needed — just enable `Settings → Actions → General → Workflow permissions → Read and write` once.
-
-Common tags it produces:
-- `main` — every push to the default branch
-- `latest` — alias for the head of the default branch
-- `sha-<short>` — every commit
-- `v1.2.3`, `1.2`, `1.2.3` — when you push a `v*.*.*` git tag
-
-Verify after a run by listing your packages on the GitHub UI (`/<owner>?tab=packages`) or:
+Images are built and pushed **locally** (no CI workflow in the repo):
 
 ```bash
-docker pull ghcr.io/trachukbohdan/bankaai-api:latest
-docker pull ghcr.io/trachukbohdan/bankaai-web:latest
+export GITHUB_TOKEN=<pat-with-write:packages>
+make prod_login
+make prod_build
+make prod_push
 ```
+
+Tag with `IMAGE_TAG` in `.env` (default `latest`). Pull on another host with `make prod_pull`.
 
 ### Useful prod commands
 
@@ -311,8 +307,8 @@ make prod_reset
 - **Significant changes** — every imported rate fires a `RateImported` event. `DetectAndAnnounceChange` (queued listener) compares against the previous reading; anything moving more than 5% (configurable via `RATES_SIGNIFICANT_THRESHOLD_PCT`) is stored in `rate_changes` and a `SignificantRateChange` notification is queued via mail + database channels for every matching subscriber.
 - **Subscriptions** — authenticated users can subscribe to any (bank, currency) pair with their own threshold. Nullable `bank_id`/`currency_id` mean "any". Notifications respect the user's global `notifications_enabled` toggle.
 - **Nearest branches** — MySQL 8 spatial index (POINT, SRID 4326, generated from `lat`/`lng`) + `ST_Distance_Sphere`. Dev seed loads ~29k rows from `api/database/data/branches.json` (finance.ua snapshot); `branches:sync` refreshes from the live API daily.
-- **REST API**: `/api/currencies`, `/api/banks`, `/api/banks/{slug}`, `/api/rates`, `/api/rates/nbu` (rates + per-currency average across banks), `/api/rates/statistics`, `/api/rates/changes`, `/api/branches/nearest`. Auth via Sanctum cookies: `/api/auth/register`, `/api/auth/login`, `/api/auth/logout`, `/api/me`, `/api/me/subscriptions`.
-- **Frontend** — fully implemented views: Home (NBU + bank average highlights), Banks list, Bank detail (with map of branches), Rates (filterable), NBU + averages, Nearest branches (Leaflet map + table, with `navigator.geolocation`), Statistics (Chart.js daily line + min/max/avg), History of significant changes, Login/Register, Profile + subscription management.
+- **REST API** (prefix `/api`): `GET /ping`, `/status`, `/currencies`, `/banks`, `/banks/{slug}`, `/rates`, `/rates/nbu`, `/rates/history`, `/rates/statistics`, `/rates/changes`, `/branches/nearest`. Auth (Sanctum cookies): `POST /auth/register`, `/auth/login`; `POST /auth/logout`, `GET|PUT /me`, `GET|POST /me/subscriptions`, `DELETE /me/subscriptions/{id}`.
+- **Frontend** (Vue 3 + PrimeVue): `/` home, `/banks`, `/banks/:slug` (branch map), `/rates` (table + NBU averages), `/nearest` (geolocation + Leaflet), `/statistics` (date range + Chart.js), `/login`, `/register`, `/profile` (subscriptions + notification toggle). Shared `LoadingBlock` / `ErrorBlock` components; Leaflet marker icons via `ui/src/lib/leafletIcons.ts`.
 
 ## Tests
 
@@ -333,6 +329,6 @@ check, so the in-memory SQLite test DB skips it cleanly.
 ## Notes on the current scope
 
 - Dev stack is feature-complete: API + UI + scheduler + queue + mailpit, with HMR on a direct Vite port.
-- Prod stack ships static SPA assets + an immutable Laravel image, auto-migrations on api boot (`entrypoint.prod.sh`), **`queue` + `scheduler`** for periodic upstream sync, and GHCR images built by `.github/workflows/publish-images.yml`. Use `make dev_start` / `make prod_start` for repeatable env setup.
+- Prod stack ships static SPA assets + an immutable Laravel image, auto-migrations on api boot (`entrypoint.prod.sh`), **`queue` + `scheduler`** for periodic upstream sync, and GHCR publish via `make prod_build` / `make prod_push`. Use `make dev_start` or the detached flow above for local dev.
 - Mailpit catches every outgoing email in dev; in prod swap to a real `MAIL_*` configuration (or pull e.g. `mailhog/mailhog`).
 - No TLS termination — typically handled by a reverse proxy (Caddy, Traefik, an upstream load balancer) in front of `web` in real deployments.
